@@ -11,7 +11,7 @@
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-app.ts';
@@ -19,6 +19,19 @@ import { buildDossier } from './vendor/makefun-app.ts';
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
+const problems: string[] = [];
+if (!existsSync(join(here, 'app', 'index.html'))) problems.push('app/index.html is missing');
+const shotsDir = join(here, 'screenshots');
+const shotCount = existsSync(shotsDir)
+  ? readdirSync(shotsDir).filter((name) => /\.(png|jpe?g)$/i.test(name) && !name.startsWith('.')).length
+  : 0;
+if (shotCount < 3) problems.push(`screenshots/ holds ${shotCount} image${shotCount === 1 ? '' : 's'} (needs at least 3)`);
+if (problems.length) {
+  for (const problem of problems) console.error(`vice-grid: ${problem}`);
+  process.exit(1);
+}
+
+console.log(`vice-grid: writing app/, screenshots/ and dossier.json to ${out}`);
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'app'), join(out, 'app'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });

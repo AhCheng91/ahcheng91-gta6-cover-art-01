@@ -3,21 +3,131 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cover Snap</title>
+<meta name="color-scheme" content="dark">
+<title>VICE GRID — GTA-style cover art studio</title>
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-<main class="app">
-  <section class="controls">
-    <h1>Cover Snap</h1>
-    <p>A photo and a caption, made into a square cover.</p>
-    <label>Photo <input id="photo" type="file" accept="image/*"></label>
-    <label>Caption <input id="caption" type="text" maxlength="40" value="Sunset Heist"></label>
-    <button id="export" type="button">Export PNG 1080 x 1080</button>
-    <p id="status" role="status"></p>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-dot" aria-hidden="true"></span>
+    <span class="brand-name">VICE GRID</span>
+    <span class="brand-tag">GTA-style cover art, offline</span>
+  </div>
+  <div class="topbar-actions">
+    <div class="segmented" id="size-chips" role="group" aria-label="Post size"></div>
+    <button class="btn btn-primary" id="export-btn" type="button">Export PNG</button>
+  </div>
+</header>
+
+<nav class="stepper" id="stepper" aria-label="Cover flow">
+  <span class="step is-active" data-step="1"><b>1</b> Photo</span>
+  <span class="step-sep" aria-hidden="true"></span>
+  <span class="step" data-step="2"><b>2</b> Caption</span>
+  <span class="step-sep" aria-hidden="true"></span>
+  <span class="step" data-step="3"><b>3</b> Export</span>
+</nav>
+
+<main class="workspace">
+  <section class="stage-column" aria-label="Cover stage">
+    <div class="stage" id="stage">
+      <div class="stage-inner" id="stage-inner">
+        <canvas id="cover" width="1080" height="1080" aria-label="Live cover preview"></canvas>
+        <div class="panel-ring" id="panel-ring" hidden></div>
+        <div class="panel-tag" id="panel-tag" hidden></div>
+      </div>
+      <div class="drop-overlay" id="drop-overlay" hidden>
+        <span>Drop photos to add them</span>
+      </div>
+    </div>
+    <p class="stage-hint">Drag a panel to reposition <span>·</span> scroll to zoom <span>·</span> 1–5 to pick a layout</p>
   </section>
-  <canvas id="cover" width="1080" height="1080" aria-label="The cover"></canvas>
+
+  <aside class="inspector" id="inspector" aria-label="Inspector">
+    <section class="card" id="card-photos">
+      <header class="card-head">
+        <h2>Photos</h2>
+        <span class="pill" id="photo-count">0 loaded</span>
+      </header>
+      <div class="sample-strip" id="sample-strip" aria-label="Sample photos"></div>
+      <div class="row">
+        <button class="btn btn-ghost" id="add-photos" type="button">Add photos</button>
+        <button class="btn btn-quiet" id="clear-photos" type="button">Clear</button>
+        <input id="photo-input" type="file" accept="image/*" multiple hidden>
+      </div>
+      <ul class="photo-list" id="photo-list"></ul>
+    </section>
+
+    <section class="card" id="card-layout">
+      <header class="card-head"><h2>Layout</h2></header>
+      <div class="layout-grid" id="layout-grid"></div>
+    </section>
+
+    <section class="card" id="card-panel">
+      <header class="card-head">
+        <h2>Selected panel</h2>
+        <span class="pill" id="panel-label">Panel 1 / 6</span>
+      </header>
+      <div class="field">
+        <label for="panel-photo">Photo</label>
+        <select id="panel-photo"></select>
+      </div>
+      <div class="field">
+        <label for="panel-zoom">Zoom <span class="value" id="zoom-value">1.0×</span></label>
+        <input id="panel-zoom" type="range" min="1" max="2.5" step="0.05" value="1">
+      </div>
+      <div class="row">
+        <button class="btn btn-quiet" id="reset-focus" type="button">Reset focus</button>
+      </div>
+      <p class="note" id="panel-note">Drag on the panel to pan it.</p>
+    </section>
+
+    <section class="card" id="card-caption">
+      <header class="card-head"><h2>Caption</h2></header>
+      <div class="field">
+        <label for="caption-title">Title</label>
+        <input id="caption-title" type="text" maxlength="48" value="SUNSET HEIST">
+      </div>
+      <div class="field">
+        <label for="caption-subtitle">Subtitle</label>
+        <input id="caption-subtitle" type="text" maxlength="60" value="THE CITY NEVER SLEEPS">
+      </div>
+      <div class="badge-fields">
+        <div class="field"><label for="badge-0">Badge 1</label><input id="badge-0" type="text" maxlength="18" value="VICE CITY"></div>
+        <div class="field"><label for="badge-1">Badge 2</label><input id="badge-1" type="text" maxlength="18" value="OPEN WORLD"></div>
+        <div class="field"><label for="badge-2">Badge 3</label><input id="badge-2" type="text" maxlength="18" value="2026"></div>
+      </div>
+    </section>
+
+    <section class="card" id="card-look">
+      <header class="card-head"><h2>Look</h2></header>
+      <div class="palette-row" id="palette-row"></div>
+      <div class="field">
+        <label for="grade">Grade <span class="value" id="grade-value">100</span></label>
+        <input id="grade" type="range" min="0" max="100" step="1" value="100">
+      </div>
+      <div class="field">
+        <label for="grain">Grain <span class="value" id="grain-value">62</span></label>
+        <input id="grain" type="range" min="0" max="100" step="1" value="62">
+      </div>
+      <div class="field">
+        <label for="bloom">Bloom <span class="value" id="bloom-value">68</span></label>
+        <input id="bloom" type="range" min="0" max="100" step="1" value="68">
+      </div>
+    </section>
+
+    <section class="card" id="card-export">
+      <header class="card-head"><h2>Export</h2></header>
+      <div class="segmented segmented-wide" id="size-chips-2" role="group" aria-label="Export size"></div>
+      <button class="btn btn-primary btn-wide" id="export-btn-2" type="button">Export PNG</button>
+      <p class="note" id="export-note">Saves vice-grid-1080x1080.png · nothing leaves this machine</p>
+    </section>
+  </aside>
 </main>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<div id="shot-layer" hidden></div>
+
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
