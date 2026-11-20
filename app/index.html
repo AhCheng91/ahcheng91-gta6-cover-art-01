@@ -17,8 +17,8 @@
     </div>
   </div>
   <div class="topbar-actions">
-    <div class="segmented" id="size-chips" role="group" aria-label="Post size"></div>
-    <button class="btn btn-primary" id="export-btn" type="button">Export PNG</button>
+    <div class="segmented" id="size-chips" role="group" aria-label="Cover size"></div>
+    <button class="btn btn-primary" id="download" type="button">EXPORT PNG</button>
   </div>
 </header>
 
@@ -53,42 +53,41 @@
     <section class="panel-card">
       <header class="card-head"><h2>Caption</h2></header>
       <div class="field">
-        <label for="cap-title">Title</label>
-        <input id="cap-title" type="text" maxlength="44" value="SOLARIS VICE">
+        <label for="caption-title">Title</label>
+        <input id="caption-title" type="text" maxlength="44" value="SOLARIS VICE" autocomplete="off">
       </div>
       <div class="field">
-        <label for="cap-subtitle">Subtitle (script)</label>
-        <input id="cap-subtitle" type="text" maxlength="40" value="summer of '86" data-script>
+        <label for="caption-subtitle">Subtitle</label>
+        <input id="caption-subtitle" type="text" maxlength="40" value="summer of '86" autocomplete="off" data-script>
       </div>
       <div class="field">
-        <label for="cap-quote">Pull quote</label>
-        <input id="cap-quote" type="text" maxlength="46" value="THE HOTTEST SUMMER IN AMERICA">
+        <label for="caption-quote">Pull quote</label>
+        <input id="caption-quote" type="text" maxlength="52" value="THE HOTTEST SUMMER IN AMERICA" autocomplete="off">
       </div>
       <div class="field-row">
         <div class="field">
-          <label for="cap-volume">Volume</label>
-          <input id="cap-volume" type="text" maxlength="10" value="VOL. 02">
+          <label for="caption-volume">Volume</label>
+          <input id="caption-volume" type="text" maxlength="12" value="VOL. 02" autocomplete="off">
         </div>
         <div class="field grow">
-          <label for="cap-tagline">Tagline</label>
-          <input id="cap-tagline" type="text" maxlength="52" value="SIX STRANGERS · ONE COAST · NO WAY BACK">
+          <label for="caption-tagline">Tagline</label>
+          <input id="caption-tagline" type="text" maxlength="60" value="SIX STRANGERS · ONE COAST · NO WAY BACK" autocomplete="off">
         </div>
       </div>
     </section>
 
     <section class="panel-card">
       <header class="card-head"><h2>Cast</h2><span class="pill">role chips</span></header>
-      <div class="roles" id="roles"></div>
+      <div class="roles" id="role-inputs"></div>
     </section>
 
     <section class="panel-card">
-      <header class="card-head"><h2>Photos</h2><span class="pill" id="photo-count">0 loaded</span></header>
+      <header class="card-head"><h2>Photos</h2><span class="pill" id="photo-count">0 of 0</span></header>
       <div class="photo-strip" id="photo-strip"></div>
-      <p class="photo-more" id="photo-more" hidden></p>
       <div class="row">
-        <button class="btn btn-ghost" id="add-photos" type="button">Add photos</button>
-        <button class="btn btn-quiet" id="clear-photos" type="button">Clear</button>
-        <input id="photo-input" type="file" accept="image/*" multiple hidden>
+        <label class="btn btn-ghost" for="add-photos">ADD PHOTOS</label>
+        <input id="add-photos" type="file" accept="image/*" multiple hidden>
+        <button class="btn btn-quiet" id="clear-photos" type="button">CLEAR</button>
       </div>
       <p class="note" id="panel-note">Click a panel to select it. Drag to pan, scroll to zoom.</p>
     </section>
@@ -96,40 +95,34 @@
 
   <section class="stage-column" aria-label="Cover preview">
     <div class="stage" id="stage">
-      <div class="stage-inner" id="stage-inner">
-        <canvas id="cover" width="1080" height="1080" aria-label="Live cover preview"></canvas>
-        <div class="panel-ring" id="panel-ring" hidden></div>
-        <div class="panel-tag" id="panel-tag" hidden></div>
-      </div>
-      <div class="drop-overlay" id="drop-overlay" hidden><span>Drop photos to add them</span></div>
+      <canvas id="preview" width="1080" height="1080" aria-label="Live cover preview"></canvas>
     </div>
-    <p class="stage-hint">Drag a panel to pan · scroll to zoom · <kbd>1</kbd>–<kbd>6</kbd> layouts · <kbd>E</kbd> export</p>
+    <p class="hint" id="hint">DRAG A PANEL TO PAN · SCROLL TO ZOOM · 1-6 LAYOUTS · E EXPORT</p>
   </section>
 
-  <aside class="rail" aria-label="Export">
+  <aside class="rail" aria-label="Export and panel">
     <section class="panel-card">
       <header class="card-head"><h2>Export</h2></header>
-      <div class="size-stack" id="size-stack"></div>
-      <button class="btn btn-primary btn-wide" id="export-btn-2" type="button">Download PNG</button>
-      <p class="note" id="export-note">PNG at full resolution · nothing leaves this machine</p>
+      <div class="size-stack" id="export-sizes"></div>
+      <button class="btn btn-primary btn-wide" id="download-2" type="button">DOWNLOAD PNG</button>
+      <p class="note" id="export-note">saves solaris-vice-1080x1080.png · nothing leaves this machine</p>
     </section>
 
     <section class="panel-card">
-      <header class="card-head"><h2>Selected panel</h2><span class="pill" id="panel-label">Panel 1</span></header>
+      <header class="card-head"><h2>Selected panel</h2><span class="pill" id="selected-panel">Panel 1</span></header>
       <div class="field">
-        <label for="panel-photo">Photo</label>
-        <select id="panel-photo"></select>
+        <label for="zoom">Zoom <span class="value" id="zoom-value">1.00×</span></label>
+        <input id="zoom" type="range" min="1" max="3" step="0.02" value="1">
       </div>
-      <div class="field">
-        <label for="panel-zoom">Zoom <span class="value" id="zoom-value">1.00×</span></label>
-        <input id="panel-zoom" type="range" min="1" max="3" step="0.02" value="1">
+      <div class="row">
+        <button class="btn btn-quiet" id="reset-crop" type="button">RESET CROP</button>
+        <button class="btn btn-quiet" id="cycle-photo" type="button">CYCLE PHOTO</button>
       </div>
-      <button class="btn btn-quiet btn-wide" id="reset-focus" type="button">Reset crop</button>
     </section>
 
     <section class="panel-card about">
       <header class="card-head"><h2>How it prints</h2></header>
-      <p>Every panel is a separate shot pushed through one duotone gradient map, then halftoned, framed and sunk under a hand-set title. The strips, barcode and seal print last.</p>
+      <p>Every panel is a separate shot pushed through one duotone gradient map, halftoned, framed and sunk under a hand-set title. Strips, barcode and seal print last.</p>
       <p class="fine">Anton · Archivo Black · Barlow Condensed · Pacifico</p>
     </section>
   </aside>

@@ -1,275 +1,236 @@
-// The Vice sunset backdrop. The panels hide most of it, but the ink gutters, the 2px frame lines
-// and the strips must read as one continuous sunset world, so this is drawn full-bleed first and
-// every other layer sits on top of it.
-//
-// Everything here is procedural and seeded: the same palette gives the same poster every time.
-
-import { rgba, seeded } from './grade.js';
-
-const HORIZON = 0.62;
-
-function horizonOf(height) {
-  return Math.round(height * HORIZON);
+function hexA(hex, alpha) {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const n = parseInt(full, 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-/** Sky, sun, skyline, palms, clouds, stars and water — one call, full bleed. */
-export function drawBackdrop(ctx, width, height, palette) {
-  const horizon = horizonOf(height);
-
-  drawSky(ctx, width, horizon, palette);
-  drawStars(ctx, width, horizon);
-  drawSun(ctx, width, height, horizon, palette);
-  drawClouds(ctx, width, height, horizon);
-  drawWater(ctx, width, height, horizon, palette);
-  drawSkyline(ctx, width, height, horizon);
-  drawReflections(ctx, width, height, horizon);
-  drawWaveLines(ctx, width, height, horizon);
-  drawPalms(ctx, width, height);
+function noise(seed) {
+  const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
 }
 
-/* ------------------------------------------------------------------ sky */
+function pick(seed, min, max) {
+  return min + noise(seed) * (max - min);
+}
 
-function drawSky(ctx, width, horizon, palette) {
+function drawSky(ctx, width, height, palette, horizon) {
   const sky = ctx.createLinearGradient(0, 0, 0, horizon);
   sky.addColorStop(0, palette.skyTop);
-  sky.addColorStop(0.34, palette.skyMid);
-  sky.addColorStop(0.66, palette.skyHot);
-  sky.addColorStop(0.9, palette.orange);
+  sky.addColorStop(0.42, palette.skyMid);
+  sky.addColorStop(0.76, palette.skyHot);
   sky.addColorStop(1, palette.skyLow);
   ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, width, horizon);
-
-  // A banded haze right above the water so the horizon has a pulse to it.
-  const haze = ctx.createLinearGradient(0, horizon * 0.72, 0, horizon);
-  haze.addColorStop(0, rgba(palette.magenta, 0));
-  haze.addColorStop(0.6, rgba(palette.accent, 0.16));
-  haze.addColorStop(1, rgba(palette.skyLow, 0.4));
-  ctx.fillStyle = haze;
-  ctx.fillRect(0, horizon * 0.72, width, horizon * 0.28);
+  ctx.fillRect(0, 0, width, horizon + 1);
 }
 
-function drawStars(ctx, width, horizon) {
-  const limit = horizon * 0.44;
-  const random = seeded(0x57a12);
+function drawStars(ctx, width, height, palette) {
+  const limit = height * 0.42;
   ctx.save();
-  for (let i = 0; i < 60; i += 1) {
-    const x = random() * width;
-    const y = random() * limit;
-    const r = 0.6 + random() * 1.6;
-    ctx.globalAlpha = 0.12 + random() * 0.5;
-    ctx.fillStyle = i % 7 === 0 ? '#ffd9a8' : '#ffffff';
+  for (let i = 0; i < 46; i += 1) {
+    const x = pick(i * 3.1 + 1.7, 0, width);
+    const y = pick(i * 5.7 + 9.3, 0, limit);
+    const r = pick(i * 2.3 + 4.1, 0.5, 1.9);
+    const a = pick(i * 7.9 + 2.2, 0.08, 0.42) * (1 - y / limit) + 0.05;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = hexA(palette.cream, a);
     ctx.fill();
   }
   ctx.restore();
 }
 
-function drawSun(ctx, width, height, horizon, palette) {
+function drawSun(ctx, width, height, palette, horizon) {
   const cx = width * 0.5;
-  const cy = horizon - height * 0.014;
-  const radius = Math.min(width, height) * 0.2;
+  const cy = horizon - height * 0.045;
+  const r = height * 0.155;
+  const halo = ctx.createRadialGradient(cx, cy, r * 0.4, cx, cy, r * 3.2);
+  halo.addColorStop(0, hexA(palette.skyLow, 0.5));
+  halo.addColorStop(0.35, hexA(palette.skyHot, 0.26));
+  halo.addColorStop(1, hexA(palette.skyHot, 0));
+  ctx.fillStyle = halo;
+  ctx.fillRect(cx - r * 3.2, cy - r * 3.2, r * 6.4, r * 6.4);
 
-  ctx.save();
-  const glow = ctx.createRadialGradient(cx, cy, radius * 0.2, cx, cy, radius * 2.4);
-  glow.addColorStop(0, rgba(palette.highlight, 0.5));
-  glow.addColorStop(0.4, rgba(palette.orange, 0.26));
-  glow.addColorStop(1, rgba(palette.orange, 0));
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, width, horizon + height * 0.04);
-
-  // The disc is a plain ball softened at the rim, with the light pulled slightly high.
-  const disc = ctx.createRadialGradient(cx, cy - radius * 0.28, radius * 0.06, cx, cy, radius);
-  disc.addColorStop(0, '#fffbe8');
-  disc.addColorStop(0.4, palette.highlight);
-  disc.addColorStop(0.84, palette.orange);
-  disc.addColorStop(1, rgba(palette.orange, 0));
-  ctx.fillStyle = disc;
+  const disc = ctx.createLinearGradient(0, cy - r, 0, cy + r);
+  disc.addColorStop(0, palette.skyLow);
+  disc.addColorStop(0.55, hexA(palette.highlight, 0.96));
+  disc.addColorStop(1, hexA(palette.skyHot, 0.92));
   ctx.beginPath();
-  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = disc;
   ctx.fill();
 
-  // Retro sci-fi sun bands: three thin horizontal cuts in the lower third of the disc.
-  ctx.globalCompositeOperation = 'destination-out';
-  for (let i = 0; i < 4; i += 1) {
-    const t = i / 4;
-    const y = cy + radius * (0.18 + t * 0.62);
-    const thickness = radius * (0.012 + t * 0.03);
-    ctx.fillStyle = '#000';
-    ctx.fillRect(cx - radius, y, radius * 2, thickness);
-  }
-  ctx.restore();
-}
-
-function drawClouds(ctx, width, height, horizon) {
-  const streaks = [
-    { y: 0.16, w: 0.66, x: 0.06, a: 0.08, h: 0.009 },
-    { y: 0.24, w: 0.58, x: 0.3, a: 0.11, h: 0.007 },
-    { y: 0.33, w: 0.74, x: -0.04, a: 0.14, h: 0.013 },
-    { y: 0.42, w: 0.6, x: 0.46, a: 0.16, h: 0.009 },
-    { y: 0.5, w: 0.86, x: 0.08, a: 0.19, h: 0.015 },
-    { y: 0.57, w: 0.5, x: 0.58, a: 0.22, h: 0.011 },
-  ];
   ctx.save();
-  for (const streak of streaks) {
-    const x = streak.x * width;
-    const w = streak.w * width;
-    const y = streak.y * horizon;
-    const h = Math.max(2, streak.h * height);
-    const gradient = ctx.createLinearGradient(x, 0, x + w, 0);
-    gradient.addColorStop(0, 'rgba(255,214,205,0)');
-    gradient.addColorStop(0.3, `rgba(255,222,210,${streak.a})`);
-    gradient.addColorStop(0.64, `rgba(255,170,190,${streak.a * 0.8})`);
-    gradient.addColorStop(1, 'rgba(255,214,205,0)');
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.ellipse(x + w / 2, y, w / 2, h / 2, 0, 0, Math.PI * 2);
-    ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.globalCompositeOperation = 'source-atop';
+  ctx.fillStyle = hexA(palette.skyHot, 0.22);
+  for (let i = 0; i < 5; i += 1) {
+    const bandY = cy - r * 0.1 + i * r * 0.26;
+    const bandH = r * (0.035 + i * 0.014);
+    ctx.fillRect(cx - r, bandY, r * 2, bandH);
   }
   ctx.restore();
 }
 
-/* ------------------------------------------------------------------ water */
+function drawClouds(ctx, width, height, palette, horizon) {
+  ctx.save();
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 6; i += 1) {
+    const y = pick(i * 4.7 + 12.1, height * 0.1, horizon * 0.62);
+    const x = pick(i * 6.3 + 3.9, -width * 0.05, width * 0.55);
+    const w = pick(i * 8.1 + 5.5, width * 0.22, width * 0.46);
+    const t = pick(i * 2.9 + 7.7, 1.5, 4.5);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.bezierCurveTo(x + w * 0.3, y - t * 2, x + w * 0.7, y + t * 2, x + w, y - t);
+    ctx.strokeStyle = hexA(i % 2 ? palette.skyLow : palette.highlight, 0.16);
+    ctx.lineWidth = t;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
 
-function drawWater(ctx, width, height, horizon, palette) {
-  // Shadow, not mid, at the waterline: a mid stop here leaves a magenta band across every gutter
-  // and the poster's foot, which reads as pink haze over the print.
+function skylineLayer(ctx, width, height, palette, horizon, baseY, seedBase, color, alpha, maxH) {
+  ctx.save();
+  ctx.fillStyle = hexA(color, alpha);
+  let x = -width * 0.02;
+  let i = 0;
+  while (x < width + width * 0.05) {
+    const w = pick(seedBase + i * 3.7, width * 0.03, width * 0.09);
+    const h = pick(seedBase + i * 5.1 + 2.3, maxH * 0.3, maxH);
+    const top = baseY - h;
+    ctx.fillRect(x, top, w + 1, horizon - top + height * 0.02);
+    if (noise(seedBase + i * 9.3 + 4.4) > 0.55) {
+      const ax = x + w * 0.5;
+      const ah = pick(seedBase + i * 2.1 + 6.6, h * 0.18, h * 0.55);
+      ctx.fillRect(ax, top - ah, Math.max(1, width * 0.0016), ah);
+    }
+    if (noise(seedBase + i * 6.9 + 8.8) > 0.72) {
+      const bx = x + w * 0.22;
+      ctx.fillRect(bx, top - h * 0.22, Math.max(1, width * 0.0012), h * 0.22);
+    }
+    x += w + pick(seedBase + i * 1.3, width * 0.004, width * 0.02);
+    i += 1;
+  }
+  ctx.restore();
+}
+
+function drawWater(ctx, width, height, palette, horizon) {
   const water = ctx.createLinearGradient(0, horizon, 0, height);
-  water.addColorStop(0, palette.shadow);
-  water.addColorStop(0.32, palette.shadow);
-  water.addColorStop(1, palette.ink);
+  water.addColorStop(0, hexA(palette.shadow, 0.9));
+  water.addColorStop(0.55, hexA(palette.shadow, 0.98));
+  water.addColorStop(1, hexA(palette.ink, 1));
   ctx.fillStyle = water;
   ctx.fillRect(0, horizon, width, height - horizon);
-}
 
-function drawSkyline(ctx, width, height, horizon) {
-  const random = seeded(0x5c17);
+  const cx = width * 0.5;
   ctx.save();
-  let x = -width * 0.02;
-  const span = width * 1.04;
-  const count = 22;
-  while (x < span) {
-    const w = (span / count) * (0.5 + random() * 1.15);
-    const h = height * (0.012 + random() * 0.05);
-    ctx.fillStyle = 'rgba(24,6,42,0.86)';
-    ctx.fillRect(x, horizon - h, Math.max(2, w), h + height * 0.01);
-    if (random() > 0.7) {
-      const ax = x + w * (0.3 + random() * 0.4);
-      const ah = h * (0.1 + random() * 0.26);
-      ctx.fillRect(ax, horizon - h - ah, Math.max(1, width * 0.0014), ah);
-      if (random() > 0.45) {
-        ctx.beginPath();
-        ctx.arc(ax, horizon - h - ah, Math.max(1.4, width * 0.0016), 0, Math.PI * 2);
-        ctx.fill();
-      }
+  for (let i = 0; i < 22; i += 1) {
+    const t = i / 21;
+    const y = horizon + t * (height - horizon);
+    const spread = width * (0.02 + t * 0.16);
+    const w = pick(i * 4.3 + 1.1, width * 0.004, width * 0.03);
+    const x = cx + pick(i * 7.1 + 3.3, -spread, spread) - w * 0.5;
+    ctx.fillStyle = hexA(i % 3 === 0 ? palette.skyHot : palette.highlight, 0.1 + (1 - t) * 0.2);
+    ctx.fillRect(x, y, w, Math.max(1, height * 0.0022));
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.lineWidth = Math.max(1, height * 0.0018);
+  for (let i = 0; i < 5; i += 1) {
+    const y = horizon + (i + 1) * ((height - horizon) / 6.2);
+    ctx.beginPath();
+    const amp = height * 0.0035 * (i + 1);
+    ctx.moveTo(width * 0.04, y);
+    for (let s = 1; s <= 8; s += 1) {
+      const x = width * 0.04 + (width * 0.92 * s) / 8;
+      ctx.quadraticCurveTo(x - width * 0.05, y - amp, x, y);
     }
-    x += w + span * 0.003 + random() * span * 0.012;
+    ctx.strokeStyle = hexA(palette.highlight, 0.12 - i * 0.012);
+    ctx.stroke();
   }
   ctx.restore();
 }
 
-function drawReflections(ctx, width, height, horizon) {
-  const cx = width * 0.5;
+function drawPalm(ctx, x, baseY, scale, flip, palette, seed) {
+  const color = palette.ink;
+  const lean = flip * scale * 0.28;
+  const topX = x + lean;
+  const topY = baseY - scale;
   ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-  const beam = ctx.createLinearGradient(cx, horizon, cx, height);
-  beam.addColorStop(0, 'rgba(255,196,120,0.44)');
-  beam.addColorStop(0.5, 'rgba(255,138,61,0.13)');
-  beam.addColorStop(1, 'rgba(255,138,61,0)');
-  ctx.fillStyle = beam;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineCap = 'round';
+
   ctx.beginPath();
-  const top = width * 0.03;
-  const bottom = width * 0.15;
-  ctx.moveTo(cx - top, horizon);
-  ctx.lineTo(cx + top, horizon);
-  ctx.lineTo(cx + bottom, height);
-  ctx.lineTo(cx - bottom, height);
+  ctx.moveTo(x - scale * 0.035, baseY);
+  ctx.bezierCurveTo(
+    x - scale * 0.02 + lean * 0.3,
+    baseY - scale * 0.45,
+    x + lean * 0.55,
+    baseY - scale * 0.72,
+    topX,
+    topY
+  );
+  ctx.lineTo(topX + scale * 0.045, topY + scale * 0.02);
+  ctx.bezierCurveTo(
+    x + lean * 0.6 + scale * 0.04,
+    baseY - scale * 0.7,
+    x + scale * 0.02 + lean * 0.3,
+    baseY - scale * 0.44,
+    x + scale * 0.045,
+    baseY
+  );
   ctx.closePath();
   ctx.fill();
 
-  const random = seeded(0x7ea);
-  for (let i = 0; i < 90; i += 1) {
-    const t = random();
-    const y = horizon + (height - horizon) * t;
-    const spread = (top + (bottom - top) * t) * (0.35 + random() * 0.95);
-    const w = Math.max(2, width * 0.004 * (0.4 + random() * 2.4));
-    const x = cx + (random() * 2 - 1) * spread;
-    ctx.globalAlpha = (1 - t) * 0.5 * (0.3 + random() * 0.7);
-    ctx.fillStyle = random() > 0.34 ? '#ffcf8a' : '#ff6f8f';
-    ctx.fillRect(x, y, w, Math.max(1, height * 0.0024 * (0.5 + random())));
-  }
-  ctx.restore();
-}
-
-function drawWaveLines(ctx, width, height, horizon) {
-  ctx.save();
-  ctx.globalAlpha = 0.46;
-  for (let i = 0; i < 22; i += 1) {
-    const y = horizon + (height - horizon) * ((i + 1) / 24);
-    ctx.fillStyle = i % 4 === 0 ? 'rgba(255,164,120,0.14)' : 'rgba(120,40,120,0.16)';
-    const inset = width * 0.018 * (i % 3);
-    ctx.fillRect(inset, y, width - inset * 2, Math.max(1, height * 0.0012));
-  }
-  ctx.restore();
-}
-
-/* ------------------------------------------------------------------ palms */
-
-/**
- * The palm pair sits in the outer margins; the panels cover most of them, but the fronds peek
- * through the gutters and the top strip, which is what sells the world.
- */
-function drawPalms(ctx, width, height) {
-  const size = Math.min(width, height);
-  drawPalm(ctx, width * 0.038, height * 1.02, size * 0.56, 1);
-  drawPalm(ctx, width * 0.962, height * 1.0, size * 0.5, -1);
-}
-
-function drawPalm(ctx, x, baseY, size, dir) {
-  const lean = 0.12 * size * dir;
-  const trunkTopX = x + lean * 2.6;
-  const trunkTopY = baseY - size;
-  ctx.save();
-  ctx.strokeStyle = 'rgba(12,4,22,0.92)';
-  ctx.fillStyle = 'rgba(12,4,22,0.92)';
-  ctx.lineCap = 'round';
-
-  ctx.lineWidth = size * 0.026;
-  ctx.beginPath();
-  ctx.moveTo(x, baseY);
-  ctx.bezierCurveTo(x + lean * 0.4, baseY - size * 0.4, x + lean * 1.7, baseY - size * 0.76, trunkTopX, trunkTopY);
-  ctx.stroke();
-
-  const fronds = 7;
-  for (let i = 0; i < fronds; i += 1) {
-    const spread = (i - (fronds - 1) / 2) / ((fronds - 1) / 2);
-    const angle = -Math.PI / 2 + spread * 1.55;
-    const length = size * (0.36 + 0.12 * (1 - Math.abs(spread)));
-    const endX = trunkTopX + Math.cos(angle) * length * dir;
-    const endY = trunkTopY + Math.sin(angle) * length * 0.6;
-    const ctrlX = trunkTopX + Math.cos(angle) * length * 0.55 * dir;
-    const ctrlY = trunkTopY + Math.sin(angle) * length * 0.15 - length * 0.18;
-    ctx.lineWidth = size * (0.014 + 0.006 * (1 - Math.abs(spread)));
+  for (let i = 0; i < 7; i += 1) {
+    const spread = (i / 6 - 0.5) * 2;
+    const len = scale * (0.42 + 0.22 * (1 - Math.abs(spread)));
+    const ang = spread * 1.15 - 0.12 + pick(seed + i * 3.3, -0.08, 0.08);
+    const ex = topX + Math.sin(ang) * len;
+    const ey = topY - Math.cos(ang) * len * 0.62;
+    const mx = topX + Math.sin(ang) * len * 0.5;
+    const my = topY - Math.cos(ang) * len * 0.62 - len * 0.18;
     ctx.beginPath();
-    ctx.moveTo(trunkTopX, trunkTopY);
-    ctx.quadraticCurveTo(ctrlX, ctrlY, endX, endY);
+    ctx.moveTo(topX, topY);
+    ctx.quadraticCurveTo(mx, my, ex, ey);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1, scale * (0.028 - Math.abs(spread) * 0.012));
     ctx.stroke();
-
-    // Leaflets: short strokes down each frond so it reads as a palm, not a spider leg.
-    ctx.lineWidth = size * 0.0045;
-    for (let leaf = 1; leaf <= 4; leaf += 1) {
-      const t = leaf / 5;
-      const bx = (1 - t) * (1 - t) * trunkTopX + 2 * (1 - t) * t * ctrlX + t * t * endX;
-      const by = (1 - t) * (1 - t) * trunkTopY + 2 * (1 - t) * t * ctrlY + t * t * endY;
-      const tilt = angle + (leaf % 2 === 0 ? 0.62 : -0.62);
+    for (let f = 1; f <= 3; f += 1) {
+      const t = f / 4;
+      const fx = topX + (ex - topX) * t;
+      const fy = topY + (ey - topY) * t - len * 0.06 * Math.sin(t * Math.PI);
       ctx.beginPath();
-      ctx.moveTo(bx, by);
-      ctx.lineTo(bx + Math.cos(tilt) * length * 0.2, by + Math.sin(tilt) * length * 0.2 + length * 0.07);
+      ctx.moveTo(fx, fy);
+      ctx.lineTo(fx + Math.sin(ang + 0.7) * scale * 0.09, fy + scale * 0.1);
+      ctx.lineWidth = Math.max(0.6, scale * 0.009);
       ctx.stroke();
     }
   }
-  ctx.beginPath();
-  ctx.arc(trunkTopX, trunkTopY, size * 0.024, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.restore();
+}
+
+export function drawBackdrop(ctx, width, height, palette) {
+  const horizon = height * 0.62;
+  ctx.save();
+  drawSky(ctx, width, height, palette, horizon);
+  drawStars(ctx, width, height, palette);
+  drawSun(ctx, width, height, palette, horizon);
+  drawClouds(ctx, width, height, palette, horizon);
+
+  skylineLayer(ctx, width, height, palette, horizon, horizon + height * 0.004, 11, palette.mid, 0.5, height * 0.1);
+  skylineLayer(ctx, width, height, palette, horizon, horizon + height * 0.01, 47, palette.shadow, 0.92, height * 0.075);
+
+  drawWater(ctx, width, height, palette, horizon);
+  drawPalm(ctx, width * 0.075, height * 1.005, height * 0.62, 1, palette, 3.7);
+  drawPalm(ctx, width * 0.93, height * 1.005, height * 0.56, -1, palette, 8.1);
   ctx.restore();
 }
