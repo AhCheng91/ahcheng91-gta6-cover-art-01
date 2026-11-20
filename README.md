@@ -1,5 +1,9 @@
 # SOLARIS VICE — GTA-style cover art studio
 
+[![make.fun · gta6-cover-art-01](https://make.fun/badge/gta6-cover-art-01.svg)](https://make.fun/bounty/gta6-cover-art-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
+[![rank](https://make.fun/badge/gta6-cover-art-01/AhCheng91/ahcheng91-gta6-cover-art-01/rank.svg)](https://make.fun/bounty/gta6-cover-art-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
+[![reward](https://make.fun/badge/gta6-cover-art-01/AhCheng91/ahcheng91-gta6-cover-art-01/reward.svg)](https://make.fun/bounty/gta6-cover-art-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
+
 Turns your own photos and a caption into multi-panel cover art in the style of a 1986 Florida
 crime poster, and exports a PNG in 1080x1080, 1080x1350 and 1920x1080. Everything runs offline in
 the browser: no upload, no network, no build step. The photos you drop in never leave the tab —
