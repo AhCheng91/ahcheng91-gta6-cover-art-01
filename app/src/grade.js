@@ -1,11 +1,19 @@
-// The Vice City grade applied over the finished collage: warm/cool split, a teal-orange duotone lift, bloom,
-// vignette and deterministic film grain. Every effect scales from the look sliders.
+// Colour plumbing and the finish pass. Everything here works on the single cover canvas: the
+// per-panel gradient map is the grade that gives the collage its one duotone world, and
+// applyGrade() adds the shared print finish (split tone, bloom, grain, vignette) on top.
 
-let grainCache = null;
-let bloomCanvas = null;
+/** #rrggbb (or #rgb) + alpha → an rgba() string. Bad input degrades to black rather than throwing. */
+export function rgba(hex, alpha) {
+  const clean = String(hex ?? '').replace('#', '');
+  const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean.padEnd(6, '0');
+  const r = parseInt(full.slice(0, 2), 16) || 0;
+  const g = parseInt(full.slice(2, 4), 16) || 0;
+  const b = parseInt(full.slice(4, 6), 16) || 0;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
-/** Small seeded PRNG (mulberry32) so the grain is identical on every render. */
-function seeded(seed) {
+/** mulberry32: a tiny deterministic PRNG, so grain, stars and streaks are identical every render. */
+export function seeded(seed) {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -16,7 +24,22 @@ function seeded(seed) {
   };
 }
 
-/** The 256 × 256 noise tile, built once and reused as a canvas pattern. */
+/** Stable 32-bit hash of a string, for seeding things from the caption title. */
+export function hashString(text) {
+  let h = 2166136261 >>> 0;
+  const value = String(text ?? '');
+  for (let i = 0; i < value.length; i += 1) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/* ------------------------------------------------------------------ film grain tile */
+
+let grainCache = null;
+
+/** A 256 × 256 monochrome noise tile, built once and reused. */
 export function grainTile() {
   if (grainCache) return grainCache;
   const tile = document.createElement('canvas');
@@ -26,7 +49,7 @@ export function grainTile() {
   const image = ctx.createImageData(256, 256);
   const random = seeded(0x5eed6);
   for (let i = 0; i < image.data.length; i += 4) {
-    const v = 72 + Math.floor(random() * 112);
+    const v = 74 + Math.floor(random() * 108);
     image.data[i] = v;
     image.data[i + 1] = v;
     image.data[i + 2] = v;
@@ -37,60 +60,56 @@ export function grainTile() {
   return tile;
 }
 
-function parseHex(hex) {
-  const clean = String(hex ?? '').replace('#', '');
-  const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean.padEnd(6, '0');
-  return {
-    r: parseInt(full.slice(0, 2), 16) || 0,
-    g: parseInt(full.slice(2, 4), 16) || 0,
-    b: parseInt(full.slice(4, 6), 16) || 0,
-  };
-}
+/* ------------------------------------------------------------------ bloom */
 
-function rgba(hex, alpha) {
-  const { r, g, b } = parseHex(hex);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
+let bloomScratch = null;
 
-function scratchCanvas(width, height) {
-  if (!bloomCanvas) bloomCanvas = document.createElement('canvas');
-  if (bloomCanvas.width !== width || bloomCanvas.height !== height) {
-    bloomCanvas.width = width;
-    bloomCanvas.height = height;
+function scratch(width, height) {
+  if (!bloomScratch) bloomScratch = document.createElement('canvas');
+  if (bloomScratch.width !== width || bloomScratch.height !== height) {
+    bloomScratch.width = width;
+    bloomScratch.height = height;
   }
-  return bloomCanvas;
+  return bloomScratch;
 }
 
-/** Soft bloom: a blurred, downscaled copy of the canvas added back with 'screen'. */
+/**
+ * Bloom: shrink a copy of the rect (that is the "downscale"), blur it with ctx.filter, add it
+ * back with 'screen'. Only bright areas survive the screen blend, so highlights blossom while
+ * shadows stay put.
+ */
 export function bloomPass(ctx, rect, amount) {
   if (amount <= 0) return;
   const source = ctx.canvas;
-  const w = Math.max(1, Math.round(rect.w * 0.35));
-  const h = Math.max(1, Math.round(rect.h * 0.35));
-  const scratch = scratchCanvas(w, h);
-  const sctx = scratch.getContext('2d');
-  sctx.clearRect(0, 0, w, h);
-  sctx.filter = 'blur(8px)';
-  sctx.drawImage(source, rect.x, rect.y, rect.w, rect.h, 0, 0, w, h);
-  sctx.filter = 'none';
+  const w = Math.max(1, Math.round(rect.w * 0.28));
+  const h = Math.max(1, Math.round(rect.h * 0.28));
+  const buffer = scratch(w, h);
+  const bctx = buffer.getContext('2d');
+  bctx.clearRect(0, 0, w, h);
+  bctx.filter = 'blur(6px) contrast(1.55) brightness(0.9)';
+  bctx.drawImage(source, rect.x, rect.y, rect.w, rect.h, 0, 0, w, h);
+  bctx.filter = 'none';
+
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
-  ctx.globalAlpha = Math.min(0.4, (0.18 * amount) / 100);
+  ctx.globalAlpha = Math.min(0.3, 0.16 * Math.min(1, amount / 60));
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(scratch, 0, 0, w, h, rect.x, rect.y, rect.w, rect.h);
+  ctx.drawImage(buffer, 0, 0, w, h, rect.x, rect.y, rect.w, rect.h);
   ctx.restore();
 }
 
-/** Transparent centre to a deep violet at the corners. */
-export function vignette(ctx, rect, strength = 1) {
+/* ------------------------------------------------------------------ vignette + grain */
+
+/** Poster vignette: transparent at the centre, ink at 32% in the corners. */
+export function vignette(ctx, rect, palette, strength = 1) {
   const cx = rect.x + rect.w / 2;
   const cy = rect.y + rect.h / 2;
   const radius = Math.hypot(rect.w, rect.h) / 2;
-  const gradient = ctx.createRadialGradient(cx, cy, radius * 0.42, cx, cy, radius);
-  gradient.addColorStop(0, 'rgba(20,4,30,0)');
-  gradient.addColorStop(0.72, `rgba(20,4,30,${0.2 * strength})`);
-  gradient.addColorStop(1, `rgba(20,4,30,${0.55 * strength})`);
+  const gradient = ctx.createRadialGradient(cx, cy, radius * 0.46, cx, cy, radius);
+  gradient.addColorStop(0, rgba(palette.ink, 0));
+  gradient.addColorStop(0.74, rgba(palette.ink, 0.12 * strength));
+  gradient.addColorStop(1, rgba(palette.ink, 0.32 * strength));
   ctx.save();
   ctx.globalCompositeOperation = 'source-over';
   ctx.fillStyle = gradient;
@@ -98,108 +117,39 @@ export function vignette(ctx, rect, strength = 1) {
   ctx.restore();
 }
 
+/** Film grain over the rect. Hard-capped at 6% alpha so the title's whites never go grey. */
 function grainPass(ctx, rect, amount) {
   if (amount <= 0) return;
   const tile = grainTile();
   const pattern = ctx.createPattern(tile, 'repeat');
   if (!pattern) return;
+  const alpha = Math.min(0.06, (0.06 * amount) / 100);
   ctx.save();
   ctx.globalCompositeOperation = 'overlay';
-  ctx.globalAlpha = Math.min(0.26, (0.2 * amount) / 100);
+  ctx.globalAlpha = alpha;
   ctx.fillStyle = pattern;
   ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
   ctx.globalCompositeOperation = 'soft-light';
-  ctx.globalAlpha = Math.min(0.14, (0.09 * amount) / 100);
+  ctx.globalAlpha = Math.min(0.05, (0.05 * amount) / 100);
   ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
   ctx.restore();
 }
 
+/* ------------------------------------------------------------------ the finish */
+
 /**
- * Grades `rect` of the canvas. Strength (0–100) scales the split tone and duotone; grain and bloom are their own
- * 0–100 amounts so the Look card can isolate them.
+ * The shared finish, applied once over the whole poster: bloom over the bright areas, film grain
+ * and a poster vignette. `strength` (0–100) scales the vignette; grain and bloom are their own
+ * 0–100 amounts.
+ *
+ * There is deliberately no global colour wash here: the tint belongs to the panels' own grade and
+ * the foot's single shadow multiply, so the print never gains a pink veil over the photographs.
+ * The finish is applied over the lettering too (that is what makes it sit *in* the print); the
+ * grain cap is what keeps the title's whites clean.
  */
-export function applyGrade(ctx, rect, palette, strength = 100, grain = 60, bloom = 60) {
+export function applyGrade(ctx, rect, palette, strength = 100, grain = 55, bloom = 60) {
   const s = Math.max(0, Math.min(100, strength)) / 100;
-  if (s <= 0 && grain <= 0 && bloom <= 0) return;
-  const warm = palette.warm;
-  const cool = palette.cool;
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(rect.x, rect.y, rect.w, rect.h);
-  ctx.clip();
-
-  if (s > 0) {
-    ctx.globalAlpha = 1;
-
-    const split = ctx.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.h);
-    split.addColorStop(0, rgba(warm, 0.34 * s));
-    split.addColorStop(0.52, rgba('#8a3a52', 0.12 * s));
-    split.addColorStop(1, rgba(cool, 0.34 * s));
-    ctx.globalCompositeOperation = 'overlay';
-    ctx.fillStyle = split;
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-
-    const deepen = ctx.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.h);
-    deepen.addColorStop(0, rgba('#1a0a26', 0.08 * s));
-    deepen.addColorStop(0.62, rgba('#0c0416', 0.26 * s));
-    deepen.addColorStop(1, rgba('#05020c', 0.46 * s));
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = deepen;
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-
-    const punch = ctx.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.h);
-    punch.addColorStop(0, rgba(warm, 0.3 * s));
-    punch.addColorStop(0.42, rgba(warm, 0.11 * s));
-    punch.addColorStop(1, rgba(warm, 0));
-    ctx.globalCompositeOperation = 'screen';
-    ctx.fillStyle = punch;
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-
-    const shade = ctx.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.h);
-    shade.addColorStop(0, rgba(cool, 0));
-    shade.addColorStop(0.6, rgba(cool, 0.06 * s));
-    shade.addColorStop(1, rgba(cool, 0.2 * s));
-    ctx.globalCompositeOperation = 'soft-light';
-    ctx.fillStyle = shade;
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-
-    ctx.globalCompositeOperation = 'overlay';
-    ctx.fillStyle = rgba('#ff5a28', 0.07 * s);
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-  }
-
-  const exposure = palette.exposure ?? 1;
-  if (exposure < 1) {
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.globalAlpha = (1 - exposure) * 1.6;
-    ctx.fillStyle = '#2a1236';
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-  } else if (exposure > 1) {
-    ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = (exposure - 1) * 0.6;
-    ctx.fillStyle = rgba(warm, 1);
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-  }
-
-  const saturation = palette.saturation ?? 1;
-  if (saturation < 1) {
-    ctx.globalCompositeOperation = 'saturation';
-    ctx.globalAlpha = Math.min(0.8, (1 - saturation) * s * 1.2);
-    ctx.fillStyle = '#808080';
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-  } else if (saturation > 1) {
-    ctx.globalCompositeOperation = 'saturation';
-    ctx.globalAlpha = Math.min(0.35, (saturation - 1) * s * 1.6);
-    ctx.fillStyle = '#ff1a00';
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-  }
-
-  ctx.globalAlpha = 1;
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.restore();
-
   bloomPass(ctx, rect, bloom * s);
-  vignette(ctx, rect, Math.max(0.45, s * 0.9));
   grainPass(ctx, rect, grain);
+  vignette(ctx, rect, palette, Math.max(0.5, s));
 }

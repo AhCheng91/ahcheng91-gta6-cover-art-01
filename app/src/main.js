@@ -1,5 +1,6 @@
-// Page logic for VICE GRID: builds the inspector from the state store, wires every control, keeps one canvas in sync
-// with the state through render.js, exports through exporter.js and runs the ?shot= scenes from shots.js.
+// Page logic for SOLARIS VICE: builds the controls from the store, renders one canvas at export
+// resolution (the same canvas is the preview, scaled by CSS), exports through exporter.js and
+// runs the ?shot= scenes from shots.js.
 
 import {
   LAYOUTS,
@@ -13,6 +14,7 @@ import {
   layoutById,
   patchTransform,
   setPanelPhoto,
+  setRole,
   setSize,
   subscribe,
   update,
@@ -43,6 +45,7 @@ import {
 
 const shot = readShot(location.search);
 let state = createState(shot.mode ? sceneOverrides(shot.mode, shot.query) : {});
+const isShot = Boolean(shot.mode);
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('cover');
@@ -55,40 +58,47 @@ const toastEl = $('toast');
 const shotLayer = $('shot-layer');
 
 const sizeChips = $('size-chips');
-const sizeChips2 = $('size-chips-2');
+const sizeStack = $('size-stack');
 const exportBtn = $('export-btn');
 const exportBtn2 = $('export-btn-2');
 const exportNote = $('export-note');
-const cardExport = $('card-export');
-const stepper = $('stepper');
-
-const sampleStrip = $('sample-strip');
-const photoList = $('photo-list');
-const photoCount = $('photo-count');
-const photoInput = $('photo-input');
-const addPhotosBtn = $('add-photos');
-const clearPhotosBtn = $('clear-photos');
 
 const layoutGrid = $('layout-grid');
 const paletteRow = $('palette-row');
+const panelCountPill = $('panel-count');
+
+const photoStrip = $('photo-strip');
+const photoCount = $('photo-count');
+const photoMore = $('photo-more');
+const photoInput = $('photo-input');
+const addPhotosBtn = $('add-photos');
+const clearPhotosBtn = $('clear-photos');
+const panelNote = $('panel-note');
 
 const panelLabel = $('panel-label');
 const panelPhoto = $('panel-photo');
 const panelZoom = $('panel-zoom');
 const zoomValue = $('zoom-value');
 const resetFocus = $('reset-focus');
-const panelNote = $('panel-note');
 
-const titleInput = $('caption-title');
-const subtitleInput = $('caption-subtitle');
-const badgeInputs = [0, 1, 2].map((i) => $(`badge-${i}`));
-
-const gradeInput = $('grade');
-const gradeValue = $('grade-value');
-const grainInput = $('grain');
-const grainValue = $('grain-value');
-const bloomInput = $('bloom');
-const bloomValue = $('bloom-value');
+const rolesWrap = $('roles');
+const inputs = {
+  title: $('cap-title'),
+  subtitle: $('cap-subtitle'),
+  quote: $('cap-quote'),
+  volume: $('cap-volume'),
+  tagline: $('cap-tagline'),
+};
+const sliders = {
+  grade: $('grade'),
+  grain: $('grain'),
+  bloom: $('bloom'),
+};
+const sliderValues = {
+  grade: $('grade-value'),
+  grain: $('grain-value'),
+  bloom: $('bloom-value'),
+};
 
 let samplePhotos = [];
 let photoSig = '';
@@ -100,9 +110,7 @@ let drag = null;
 let toastTimer = 0;
 let dragDepth = 0;
 
-const isShot = Boolean(shot.mode);
-
-/* ---------------------------------------------------------------- small DOM helpers */
+/* ------------------------------------------------------------------ DOM helpers */
 
 function el(tagName, className, text) {
   const node = document.createElement(tagName);
@@ -112,7 +120,7 @@ function el(tagName, className, text) {
 }
 
 function setTextValue(input, value) {
-  if (document.activeElement !== input) input.value = value;
+  if (input && document.activeElement !== input) input.value = value;
 }
 
 function panelCount() {
@@ -124,9 +132,10 @@ function clampPanelSelection(index) {
   return Math.max(0, Math.min(panelCount() - 1, index));
 }
 
-/* ---------------------------------------------------------------- static inspector */
+/* ------------------------------------------------------------------ static controls */
 
 function buildSizeChips(container) {
+  if (!container) return;
   container.replaceChildren();
   for (const size of SIZES) {
     const button = el('button', null, size.label);
@@ -138,20 +147,58 @@ function buildSizeChips(container) {
   }
 }
 
+function buildSizeStack(container) {
+  if (!container) return;
+  container.replaceChildren();
+  for (const size of SIZES) {
+    const button = el('button', 'size-btn');
+    button.type = 'button';
+    button.dataset.sizeId = size.id;
+    button.setAttribute('aria-pressed', 'false');
+    const name = el('span', 'size-name', size.name);
+    const label = el('span', 'size-label', size.label);
+    button.append(name, label);
+    button.addEventListener('click', () => update(setSize(state, size.id)));
+    container.append(button);
+  }
+}
+
+/** A tiny SVG diagram of a layout, drawn from its own field fractions. */
 function layoutDiagram(layout) {
   const NS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', '0 0 100 100');
   svg.setAttribute('preserveAspectRatio', 'none');
   svg.setAttribute('aria-hidden', 'true');
-  const band = layout.band;
+  const solo = layout.id === 'solo';
+  const inset = solo ? 0 : 3;
+  const fieldTop = solo ? 0 : 10;
+  const fieldH = solo ? 100 : 78;
+  if (!solo) {
+    const strip = document.createElementNS(NS, 'rect');
+    strip.setAttribute('x', '0');
+    strip.setAttribute('y', '0');
+    strip.setAttribute('width', '100');
+    strip.setAttribute('height', '7');
+    strip.setAttribute('rx', '1');
+    strip.setAttribute('class', 'diagram-strip');
+    svg.append(strip);
+    const foot = document.createElementNS(NS, 'rect');
+    foot.setAttribute('x', '0');
+    foot.setAttribute('y', '92');
+    foot.setAttribute('width', '100');
+    foot.setAttribute('height', '7');
+    foot.setAttribute('rx', '1');
+    foot.setAttribute('class', 'diagram-strip');
+    svg.append(foot);
+  }
   for (const [fx, fy, fw, fh] of layout.panels) {
     const rect = document.createElementNS(NS, 'rect');
-    rect.setAttribute('x', (fx * 100 + 1).toFixed(2));
-    rect.setAttribute('y', (fy * (1 - band) * 100 + 1).toFixed(2));
-    rect.setAttribute('width', Math.max(1.5, fw * 100 - 2).toFixed(2));
-    rect.setAttribute('height', Math.max(1.5, fh * (1 - band) * 100 - 2).toFixed(2));
-    rect.setAttribute('rx', '1.5');
+    rect.setAttribute('x', (fx * 100 + inset * 0.5).toFixed(2));
+    rect.setAttribute('y', (fieldTop + fy * fieldH + inset * 0.5).toFixed(2));
+    rect.setAttribute('width', Math.max(2, fw * 100 - inset).toFixed(2));
+    rect.setAttribute('height', Math.max(2, fh * fieldH - inset).toFixed(2));
+    rect.setAttribute('rx', '1');
     svg.append(rect);
   }
   return svg;
@@ -165,6 +212,7 @@ function buildLayoutGrid() {
     button.type = 'button';
     button.dataset.layoutId = id;
     button.setAttribute('aria-pressed', 'false');
+    button.title = `${layout.label} — ${layout.panels.length} panel${layout.panels.length === 1 ? '' : 's'}`;
     button.append(layoutDiagram(layout), el('span', null, layout.label));
     button.addEventListener('click', () => selectLayout(id));
     layoutGrid.append(button);
@@ -179,31 +227,51 @@ function buildPaletteRow() {
     button.type = 'button';
     button.dataset.paletteId = id;
     button.setAttribute('aria-pressed', 'false');
+    button.title = palette.label;
     const swatch = el('i');
-    swatch.style.background = `linear-gradient(135deg, ${palette.warm}, ${palette.cool})`;
+    swatch.style.background = `linear-gradient(135deg, ${palette.shadow}, ${palette.mid} 42%, ${palette.accent} 72%, ${palette.highlight})`;
     button.append(swatch, el('span', null, palette.label));
     button.addEventListener('click', () => update({ palette: id }));
     paletteRow.append(button);
   }
 }
 
-function buildSampleStrip() {
-  sampleStrip.replaceChildren();
+function buildRoleInputs() {
+  rolesWrap.replaceChildren();
+  const count = Math.max(6, panelCount());
+  for (let i = 0; i < count; i += 1) {
+    const wrap = el('div', 'field role-field');
+    const label = el('label', null, `Panel ${i + 1}`);
+    label.htmlFor = `role-${i}`;
+    const input = el('input');
+    input.id = `role-${i}`;
+    input.type = 'text';
+    input.maxLength = 18;
+    input.value = state.roles[i] ?? '';
+    input.dataset.roleIndex = String(i);
+    input.addEventListener('input', () => setRole(i, input.value.toUpperCase()));
+    wrap.append(label, input);
+    rolesWrap.append(wrap);
+  }
+}
+
+function buildPhotoStrip() {
+  photoStrip.replaceChildren();
   for (const meta of SAMPLES) {
     const photo = samplePhotos.find((item) => item.id === meta.id);
     if (!photo) continue;
-    const button = el('button', 'sample');
+    const button = el('button', 'thumb');
     button.type = 'button';
     button.dataset.sampleId = meta.id;
     button.setAttribute('aria-pressed', 'false');
     button.title = meta.alt;
     const image = new Image();
     image.src = photo.url;
-    image.alt = meta.alt;
+    image.alt = '';
     image.decoding = 'async';
     button.append(image, el('span', null, meta.label));
     button.addEventListener('click', () => useSample(meta.id));
-    sampleStrip.append(button);
+    photoStrip.append(button);
   }
 }
 
@@ -211,7 +279,7 @@ function selectLayout(id) {
   update({ layout: id, selectedPanel: clampPanelSelection(state.selectedPanel) });
 }
 
-/* ---------------------------------------------------------------- photos */
+/* ------------------------------------------------------------------ photos */
 
 async function useSample(id) {
   try {
@@ -221,7 +289,7 @@ async function useSample(id) {
     if (state.selectedPanel >= 0) panelPhotos[state.selectedPanel] = photo.id;
     update({ photos: merged.photos, panelPhotos });
   } catch (error) {
-    toast(`Could not load that sample`);
+    toast('Could not load that sample');
     console.error(error);
   }
 }
@@ -259,7 +327,7 @@ function clearPhotos() {
   update({ photos: [], panelPhotos: Array(MAX_PANELS).fill(null) });
 }
 
-/* ---------------------------------------------------------------- export + toast */
+/* ------------------------------------------------------------------ export + toast */
 
 function toast(message) {
   if (!toastEl) return;
@@ -271,14 +339,6 @@ function toast(message) {
   }, 2600);
 }
 
-function flashExportCard() {
-  if (!cardExport) return;
-  cardExport.classList.remove('is-flash');
-  void cardExport.offsetWidth;
-  cardExport.classList.add('is-flash');
-  setTimeout(() => cardExport.classList.remove('is-flash'), 800);
-}
-
 async function doExport({ download = true } = {}) {
   if (exporting) return null;
   exporting = true;
@@ -287,10 +347,7 @@ async function doExport({ download = true } = {}) {
     const result = await exportCover(canvas, state);
     update({ lastExport: result });
     if (download) downloadExport(result);
-    if (!isShot) {
-      toast(`Saved ${result.name}`);
-      flashExportCard();
-    }
+    if (!isShot) toast(`Saved ${result.name}`);
     return result;
   } catch (error) {
     markError(error);
@@ -301,7 +358,7 @@ async function doExport({ download = true } = {}) {
   }
 }
 
-/* ---------------------------------------------------------------- drawing */
+/* ------------------------------------------------------------------ drawing */
 
 function sizeCanvas() {
   if (canvas.width !== state.width || canvas.height !== state.height) {
@@ -311,23 +368,20 @@ function sizeCanvas() {
 }
 
 function fitStage() {
+  if (document.body.classList.contains('shot-cover') || document.body.classList.contains('shot-sheet')) {
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.objectFit = 'contain';
+    stageInner.style.width = '100%';
+    stageInner.style.height = '100%';
+    return;
+  }
+  canvas.style.objectFit = '';
   const styles = getComputedStyle(stage);
   const padX = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
   const padY = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
-  const availableW = Math.max(60, stage.clientWidth - padX);
-  const availableH = Math.max(60, stage.clientHeight - padY);
-  if (document.body.classList.contains('shot-cover')) {
-    const viewportW = stage.clientWidth;
-    const viewportH = stage.clientHeight;
-    const scale = Math.min(viewportW / state.width, viewportH / state.height);
-    stageInner.style.width = '100%';
-    stageInner.style.height = '100%';
-    canvas.style.width = `${Math.round(state.width * scale)}px`;
-    canvas.style.height = `${Math.round(state.height * scale)}px`;
-    return;
-  }
-  canvas.style.width = '';
-  canvas.style.height = '';
+  const availableW = Math.max(80, stage.clientWidth - padX);
+  const availableH = Math.max(80, stage.clientHeight - padY);
   const ratio = state.width / state.height;
   let width = availableW;
   let height = width / ratio;
@@ -369,7 +423,7 @@ function drawPanelOverlay() {
   const index = state.selectedPanel;
   const { panels } = layoutPanels(state.layout, state.width, state.height);
   const panel = index >= 0 ? panels[index] : null;
-  if (!panel) {
+  if (!panel || isShot) {
     ring.hidden = true;
     tag.hidden = true;
     return;
@@ -398,80 +452,82 @@ function drawPanelOverlay() {
   if (top < 26) {
     tag.style.top = `${top + 5}px`;
     tag.style.transform = 'translateY(0)';
-    tag.style.marginTop = '0';
   } else {
     tag.style.top = `${top}px`;
     tag.style.transform = 'translateY(-100%)';
-    tag.style.marginTop = '-6px';
   }
   tag.hidden = false;
 }
 
-/* ---------------------------------------------------------------- inspector sync */
+/* ------------------------------------------------------------------ control sync */
 
 function syncControls() {
-  const pressedSize = state.sizeId;
-  for (const container of [sizeChips, sizeChips2]) {
+  for (const container of [sizeChips, sizeStack]) {
     if (!container) continue;
     for (const button of container.children) {
-      button.setAttribute('aria-pressed', String(button.dataset.sizeId === pressedSize));
+      button.setAttribute('aria-pressed', String(button.dataset.sizeId === state.sizeId));
     }
   }
 
-  if (layoutGrid) {
-    for (const button of layoutGrid.children) {
-      button.setAttribute('aria-pressed', String(button.dataset.layoutId === state.layout));
-    }
+  for (const button of layoutGrid.children) {
+    button.setAttribute('aria-pressed', String(button.dataset.layoutId === state.layout));
   }
 
-  if (paletteRow) {
-    for (const button of paletteRow.children) {
-      button.setAttribute('aria-pressed', String(button.dataset.paletteId === state.palette));
-    }
+  for (const button of paletteRow.children) {
+    button.setAttribute('aria-pressed', String(button.dataset.paletteId === state.palette));
   }
 
+  if (panelCountPill) panelCountPill.textContent = `${panelCount()} panel${panelCount() === 1 ? '' : 's'}`;
   if (photoCount) photoCount.textContent = `${state.photos.length} loaded`;
-  if (sampleStrip) {
-    const loaded = new Set(state.photos.map((photo) => photo.id));
-    for (const button of sampleStrip.children) {
-      button.setAttribute('aria-pressed', String(loaded.has(button.dataset.sampleId)));
-    }
+  if (photoMore) {
+    const total = photoStrip ? photoStrip.children.length : 0;
+    const extra = total - 8;
+    photoMore.hidden = extra <= 0;
+    if (extra > 0) photoMore.textContent = `8 of ${total} photos · +${extra} more`;
+  }
+
+  const loaded = new Set(state.photos.map((photo) => photo.id));
+  for (const button of photoStrip.children) {
+    button.setAttribute('aria-pressed', String(loaded.has(button.dataset.sampleId)));
   }
 
   syncPhotoList();
   syncPanelCard();
   syncCaption();
+  syncRoles();
   syncLook();
-  syncStepper();
 
   if (exportNote) {
-    exportNote.textContent = `Saves vice-grid-${state.width}x${state.height}.png · nothing leaves this machine`;
+    exportNote.textContent = `Saves solaris-vice-${state.width}x${state.height}.png · nothing leaves this machine`;
   }
 }
 
 function syncPhotoList() {
-  if (!photoList) return;
+  if (!photoStrip) return;
   const signature = state.photos.map((photo) => `${photo.id}:${photo.name}`).join('|');
   if (signature !== photoSig) {
-    photoList.replaceChildren();
+    const samples = new Set(SAMPLES.map((sample) => sample.id));
     for (const photo of state.photos) {
-      const item = el('li');
-      item.dataset.photoId = photo.id;
+      if (samples.has(photo.id)) continue;
+      const button = el('button', 'thumb is-file');
+      button.type = 'button';
+      button.dataset.photoId = photo.id;
+      button.title = photo.name;
       const image = new Image();
       image.src = photo.url;
       image.alt = '';
       image.decoding = 'async';
-      item.append(image, el('span', 'name', photo.name), el('span', 'tag', photo.source === 'sample' ? 'Sample' : 'File'));
-      item.addEventListener('click', () => {
+      button.append(image, el('span', null, photo.name));
+      button.addEventListener('click', () => {
         if (state.selectedPanel >= 0) setPanelPhoto(state.selectedPanel, photo.id);
       });
-      photoList.append(item);
+      photoStrip.append(button);
     }
     photoSig = signature;
   }
   const active = state.selectedPanel >= 0 ? photoForPanel(state, state.selectedPanel) : null;
-  for (const item of photoList.children) {
-    item.classList.toggle('is-active', Boolean(active) && item.dataset.photoId === active.id);
+  for (const button of photoStrip.querySelectorAll('.is-file')) {
+    button.classList.toggle('is-active', Boolean(active) && button.dataset.photoId === active.id);
   }
 }
 
@@ -479,9 +535,7 @@ function syncPanelCard() {
   const index = state.selectedPanel;
   const disabled = index < 0;
 
-  if (panelLabel) {
-    panelLabel.textContent = disabled ? 'Pick a panel' : `Panel ${index + 1} / ${panelCount()}`;
-  }
+  if (panelLabel) panelLabel.textContent = disabled ? 'Pick a panel' : `Panel ${index + 1}`;
 
   if (panelPhoto) {
     const signature = state.photos.map((photo) => photo.id).join('|');
@@ -506,45 +560,40 @@ function syncPanelCard() {
     panelZoom.disabled = disabled;
     panelZoom.value = String(transform ? transform.zoom : 1);
   }
-  if (zoomValue) {
-    const zoom = transform ? transform.zoom : 1;
-    zoomValue.textContent = `${zoom.toFixed(2).replace(/0$/, '')}×`;
-  }
+  if (zoomValue) zoomValue.textContent = `${(transform ? transform.zoom : 1).toFixed(2)}×`;
   if (resetFocus) resetFocus.disabled = disabled;
 
   if (panelNote) {
     if (disabled) panelNote.textContent = 'Click a panel on the cover to edit it.';
     else if (!state.photos.length) panelNote.textContent = 'Add a photo to fill this panel.';
-    else panelNote.textContent = 'Drag on the panel to pan it. Scroll to zoom.';
+    else panelNote.textContent = `Panel ${index + 1} selected — drag to pan, scroll to zoom.`;
   }
 }
 
 function syncCaption() {
-  setTextValue(titleInput, state.title);
-  setTextValue(subtitleInput, state.subtitle);
-  badgeInputs.forEach((input, i) => setTextValue(input, state.badges[i] ?? ''));
+  setTextValue(inputs.title, state.title);
+  setTextValue(inputs.subtitle, state.subtitle);
+  setTextValue(inputs.quote, state.quote);
+  setTextValue(inputs.volume, state.volume);
+  setTextValue(inputs.tagline, state.tagline);
 }
 
-function syncLook() {
-  if (gradeInput) gradeInput.value = String(state.grade);
-  if (gradeValue) gradeValue.textContent = String(state.grade);
-  if (grainInput) grainInput.value = String(state.grain);
-  if (grainValue) grainValue.textContent = String(state.grain);
-  if (bloomInput) bloomInput.value = String(state.bloom);
-  if (bloomValue) bloomValue.textContent = String(state.bloom);
-}
-
-function syncStepper() {
-  if (!stepper) return;
-  const step = state.lastExport ? 3 : state.photos.length ? 2 : 1;
-  for (const node of stepper.querySelectorAll('.step')) {
-    const n = Number(node.dataset.step);
-    node.classList.toggle('is-active', n === step);
-    node.classList.toggle('is-done', n < step);
+function syncRoles() {
+  for (const input of rolesWrap.querySelectorAll('input[data-role-index]')) {
+    const i = Number(input.dataset.roleIndex);
+    if (document.activeElement !== input) input.value = state.roles[i] ?? '';
   }
 }
 
-/* ---------------------------------------------------------------- interactions */
+function syncLook() {
+  for (const key of ['grade', 'grain', 'bloom']) {
+    const input = sliders[key];
+    if (input) input.value = String(state[key]);
+    if (sliderValues[key]) sliderValues[key].textContent = String(state[key]);
+  }
+}
+
+/* ------------------------------------------------------------------ interactions */
 
 function wireControls() {
   addPhotosBtn?.addEventListener('click', () => photoInput?.click());
@@ -558,9 +607,7 @@ function wireControls() {
 
   panelPhoto?.addEventListener('change', () => {
     if (state.selectedPanel < 0) return;
-    const panelPhotos = [...state.panelPhotos];
-    panelPhotos[state.selectedPanel] = panelPhoto.value || null;
-    update({ panelPhotos });
+    setPanelPhoto(state.selectedPanel, panelPhoto.value || null);
   });
 
   panelZoom?.addEventListener('input', () => {
@@ -573,19 +620,15 @@ function wireControls() {
     patchTransform(state.selectedPanel, { zoom: 1, focusX: null, focusY: null });
   });
 
-  titleInput?.addEventListener('input', () => update({ title: titleInput.value }));
-  subtitleInput?.addEventListener('input', () => update({ subtitle: subtitleInput.value }));
-  badgeInputs.forEach((input, i) => {
-    input?.addEventListener('input', () => {
-      const badges = [...state.badges];
-      badges[i] = input.value;
-      update({ badges });
-    });
-  });
+  inputs.title?.addEventListener('input', () => update({ title: inputs.title.value.toUpperCase() }));
+  inputs.subtitle?.addEventListener('input', () => update({ subtitle: inputs.subtitle.value }));
+  inputs.quote?.addEventListener('input', () => update({ quote: inputs.quote.value.toUpperCase() }));
+  inputs.volume?.addEventListener('input', () => update({ volume: inputs.volume.value.toUpperCase() }));
+  inputs.tagline?.addEventListener('input', () => update({ tagline: inputs.tagline.value.toUpperCase() }));
 
-  gradeInput?.addEventListener('input', () => update({ grade: Number(gradeInput.value) }));
-  grainInput?.addEventListener('input', () => update({ grain: Number(grainInput.value) }));
-  bloomInput?.addEventListener('input', () => update({ bloom: Number(bloomInput.value) }));
+  for (const key of ['grade', 'grain', 'bloom']) {
+    sliders[key]?.addEventListener('input', () => update({ [key]: Number(sliders[key].value) }));
+  }
 
   exportBtn?.addEventListener('click', () => doExport());
   exportBtn2?.addEventListener('click', () => doExport());
@@ -687,8 +730,8 @@ function onWheel(event) {
   event.preventDefault();
   const transform = state.transforms[index];
   if (!transform) return;
-  const step = event.deltaY < 0 ? 0.08 : -0.08;
-  const zoom = Math.max(1, Math.min(2.5, transform.zoom + step));
+  const step = event.deltaY < 0 ? 0.06 : -0.06;
+  const zoom = Math.max(1, Math.min(3, transform.zoom + step));
   if (Math.abs(zoom - transform.zoom) > 0.001) patchTransform(index, { zoom });
 }
 
@@ -701,7 +744,7 @@ function onKeyDown(event) {
     return;
   }
   if (event.metaKey || event.ctrlKey || event.altKey) return;
-  if (event.key >= '1' && event.key <= '5') {
+  if (event.key >= '1' && event.key <= String(LAYOUT_ORDER.length)) {
     const layout = LAYOUT_ORDER[Number(event.key) - 1];
     if (layout) {
       event.preventDefault();
@@ -715,7 +758,7 @@ function onKeyDown(event) {
   }
 }
 
-/* ---------------------------------------------------------------- boot */
+/* ------------------------------------------------------------------ boot */
 
 subscribe(() => {
   state = getState();
@@ -724,9 +767,10 @@ subscribe(() => {
 });
 
 buildSizeChips(sizeChips);
-buildSizeChips(sizeChips2);
+buildSizeStack(sizeStack);
 buildLayoutGrid();
 buildPaletteRow();
+buildRoleInputs();
 wireControls();
 
 async function boot() {
@@ -734,35 +778,36 @@ async function boot() {
   document.body.dataset.error = '';
 
   try {
+    if (shot.mode) applySceneClass(shot.mode);
+
+    // Fonts first: the title fit measures Anton, so it must be real before the first render.
+    const failedFonts = await waitForFonts();
+    document.body.dataset.fonts = failedFonts.length ? 'fallback' : 'ready';
+
     samplePhotos = await loadSamples();
-    buildSampleStrip();
-    await waitForFonts();
-
-    if (shot.mode) {
-      applySceneClass(shot.mode);
-      const photos = await scenePhotos(shot.mode, shot.query);
-      update({ photos });
-      syncControls();
-      drawNow();
-
-      if (shot.mode === 'export' || shot.mode === 'sheet') {
-        const result = await exportCover(canvas, state);
-        update({ lastExport: result });
-        syncControls();
-        showResult(shot.mode, { result, caption: result.name });
-      }
-
-      await afterPaint(2);
-      markReady();
-      return;
-    }
-
-    update({ photos: samplePhotos });
+    buildPhotoStrip();
+    state = createState({
+      ...(shot.mode ? sceneOverrides(shot.mode, shot.query) : {}),
+      photos: shot.mode ? await scenePhotos(shot.mode, shot.query) : samplePhotos,
+    });
     syncControls();
     drawNow();
+
+    if (shot.mode === 'export' || shot.mode === 'sheet') {
+      const result = await exportCover(canvas, state);
+      update({ lastExport: result });
+      syncControls();
+      showResult(shot.mode, { result });
+    }
+
+    if (shot.mode) {
+      await afterPaint(2);
+      markReady();
+    } else {
+      document.body.dataset.ready = '1';
+    }
   } catch (error) {
     markError(error);
-    console.error(error);
   }
 }
 

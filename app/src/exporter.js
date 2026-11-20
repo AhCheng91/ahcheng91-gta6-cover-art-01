@@ -1,6 +1,7 @@
-// Export: the canvas is already the finished cover at full resolution, so a PNG blob is the whole job.
+// Export: the canvas already holds the finished cover at full resolution, so a PNG blob is the
+// whole job. Everything here is local — no upload, no network.
 
-/** Encodes the cover canvas to a PNG and returns { blob, url, name, width, height }. */
+/** Encode the cover canvas to PNG. Resolves { blob, url, name, width, height, bytes }. */
 export function exportCover(canvas, state) {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -13,7 +14,7 @@ export function exportCover(canvas, state) {
       resolve({
         blob,
         url: URL.createObjectURL(blob),
-        name: `vice-grid-${canvas.width}x${canvas.height}.png`,
+        name: `solaris-vice-${canvas.width}x${canvas.height}.png`,
         width: canvas.width,
         height: canvas.height,
         bytes: blob.size,
@@ -22,7 +23,7 @@ export function exportCover(canvas, state) {
   });
 }
 
-/** Triggers the download of an exported PNG through a temporary link. */
+/** Download an exported PNG through a temporary link. */
 export function downloadExport(result) {
   const link = document.createElement('a');
   link.href = result.url;
@@ -33,7 +34,7 @@ export function downloadExport(result) {
   link.remove();
 }
 
-/** Human-readable byte size for the export card and result sheet. */
+/** Human-readable byte size for the export card. */
 export function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB';
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
