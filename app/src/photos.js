@@ -1,96 +1,83 @@
-const SAMPLE_DEFS = [
-  { id: 'solstice', label: 'Solstice' },
-  { id: 'neon', label: 'Neon' },
-  { id: 'boss', label: 'Boss' },
-  { id: 'causeway', label: 'Causeway' },
-  { id: 'rider', label: 'Rider' },
-  { id: 'car', label: 'Car' },
-  { id: 'street', label: 'Street' },
-  { id: 'beach', label: 'Beach' },
-  { id: 'rooftop', label: 'Rooftop' },
-  { id: 'drive', label: 'Drive' }
+export const SAMPLES = [
+  { id: 'boss', file: 'photo-boss.jpg', label: 'The Boss' },
+  { id: 'street', file: 'photo-street.jpg', label: 'The Street' },
+  { id: 'beach', file: 'photo-beach.jpg', label: 'The Beach' },
+  { id: 'neon', file: 'photo-neon.jpg', label: 'The Neon' },
+  { id: 'car', file: 'photo-car.jpg', label: 'The Car' },
+  { id: 'causeway', file: 'photo-causeway.jpg', label: 'The Causeway' },
+  { id: 'drive', file: 'photo-drive.jpg', label: 'The Drive' },
+  { id: 'rider', file: 'photo-rider.jpg', label: 'The Rider' },
+  { id: 'rooftop', file: 'photo-rooftop.jpg', label: 'The Rooftop' },
+  { id: 'solstice', file: 'photo-solstice.jpg', label: 'The Solstice' }
 ];
 
-export const SAMPLES = SAMPLE_DEFS.map(({ id, label }) => ({
-  id,
-  file: `samples/photo-${id}.jpg`,
-  url: `samples/photo-${id}.jpg`,
-  label
-}));
+const BY_ID = new Map(SAMPLES.map((s) => [s.id, s]));
 
-const imageCache = new Map();
-
-export function loadImageFromUrl(url) {
-  if (imageCache.has(url)) return imageCache.get(url);
-  const promise = new Promise((resolve, reject) => {
-    const img = new Image();
-    img.decoding = 'async';
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Could not load image: ${url}`));
-    img.src = url;
-  });
-  imageCache.set(url, promise);
-  return promise;
+export function sampleById(id) {
+  return BY_ID.get(id) || SAMPLES[0];
 }
 
-export function loadImageFromFile(file) {
-  const url = URL.createObjectURL(file);
-  return loadImageFromUrl(url).then((img) => {
-    img.__objectUrl = url;
-    img.__fileName = file.name;
-    return img;
+export function sampleUrl(id) {
+  return new URL('../samples/' + sampleById(id).file, import.meta.url).href;
+}
+
+export function loadImageFromUrl(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('Timed out loading image: ' + url));
+    }, 6000);
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(img);
+      if (img.decode) {
+        try {
+          img.decode().catch(() => {});
+        } catch (err) {}
+      }
+    };
+    img.decoding = 'async';
+    img.onload = finish;
+    img.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error('Could not load image: ' + url));
+    };
+    img.src = url;
   });
 }
 
 export function loadSample(id) {
-  const sample = SAMPLES.find((s) => s.id === id);
-  if (!sample) return Promise.reject(new Error(`Unknown sample: ${id}`));
-  return loadImageFromUrl(sample.url).then((image) => ({
-    id: sample.id,
-    url: sample.url,
-    image,
-    label: sample.label
-  }));
+  return loadImageFromUrl(sampleUrl(id));
 }
 
-export function loadSamples() {
-  return Promise.all(SAMPLES.map((s) => loadSample(s.id)));
-}
-
-export function loadShotPhotos(ids) {
-  const list = (ids || []).filter(Boolean);
-  return Promise.all(
-    list.map((id) => {
-      const sample = SAMPLES.find((s) => s.id === id);
-      if (!sample) {
-        return Promise.resolve({ id, url: `samples/photo-${id}.jpg`, image: null, label: id });
-      }
-      return loadSample(id).catch(() => ({ ...sample, image: null }));
-    })
+export function loadImageFromFile(file) {
+  const url = URL.createObjectURL(file);
+  return loadImageFromUrl(url).then(
+    (img) => {
+      img.objectUrl = url;
+      return img;
+    },
+    (err) => {
+      URL.revokeObjectURL(url);
+      throw err;
+    }
   );
 }
 
-export function photoForPanel(state, index) {
-  const photos = state.photos || [];
-  if (!photos.length) return null;
-  return photos[index % photos.length];
-}
-
-export function addPhotos(state, photos) {
-  const incoming = (photos || []).filter(Boolean);
-  if (!incoming.length) return state;
-  return { ...state, photos: [...state.photos, ...incoming] };
-}
-
-export function releasePhotos(photos) {
-  (photos || []).forEach((photo) => {
-    const img = photo && photo.image;
-    if (!img) return;
-    const url = img.__objectUrl;
-    if (url) {
-      URL.revokeObjectURL(url);
-      imageCache.delete(url);
-      img.__objectUrl = null;
-    }
-  });
+export async function ensureFonts() {
+  if (!document.fonts) return;
+  await Promise.all([
+    document.fonts.load('60px Anton'),
+    document.fonts.load('24px Barlow Condensed'),
+    document.fonts.load('40px "Archivo Black"'),
+    document.fonts.load('40px Pacifico')
+  ]);
+  await document.fonts.ready;
 }

@@ -1,185 +1,139 @@
-const GRAIN_SIZE = 160;
-const scratchPool = [];
+import { coverFit, cutRectPoints } from './panels.js';
+import { rngFor, clamp, polyPath, canvas2d } from './util.js';
 
-function makeCanvas(width, height) {
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.ceil(width));
-  canvas.height = Math.max(1, Math.ceil(height));
+const PLUM = '#3a1240';
+const CREAM = '#fff3dc';
+
+const grainCache = new Map();
+
+export function grainTile(seed) {
+  const key = seed >>> 0;
+  if (grainCache.has(key)) return grainCache.get(key);
+  const { canvas, ctx } = canvas2d(160, 160);
+  const rng = rngFor(key);
+  const img = ctx.createImageData(160, 160);
+  const data = img.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const v = (rng.next() * 255) | 0;
+    data[i] = v;
+    data[i + 1] = v;
+    data[i + 2] = v;
+    data[i + 3] = (rng.next() * 19) | 0;
+  }
+  ctx.putImageData(img, 0, 0);
+  grainCache.set(key, canvas);
   return canvas;
 }
 
-function scratchFor(width, height) {
-  const w = Math.max(1, Math.ceil(width));
-  const h = Math.max(1, Math.ceil(height));
-  let canvas = scratchPool.find((c) => c.width === w && c.height === h);
-  if (!canvas) {
-    canvas = makeCanvas(w, h);
-    scratchPool.push(canvas);
-    if (scratchPool.length > 6) scratchPool.shift();
-  }
-  const g = canvas.getContext('2d');
-  g.setTransform(1, 0, 0, 1, 0, 0);
-  g.globalAlpha = 1;
-  g.globalCompositeOperation = 'source-over';
-  g.filter = 'none';
-  g.clearRect(0, 0, w, h);
-  return canvas;
+function keylineWidth(ctx) {
+  const w = (ctx.canvas && ctx.canvas.width) || 1000;
+  return Math.max(2.5, 0.0028 * w);
 }
 
-export function rgba(hex, alpha = 1) {
-  const raw = String(hex || '#000000').replace('#', '').trim();
-  const full = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw.padEnd(6, '0').slice(0, 6);
-  const n = parseInt(full, 16);
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+function paintPlaceholder(sctx, w, h) {
+  sctx.fillStyle = PLUM;
+  sctx.fillRect(0, 0, w, h);
 }
 
-export function hashString(text) {
-  const s = String(text == null ? '' : text);
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i += 1) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-export function seeded(seed) {
-  let a = (typeof seed === 'string' ? hashString(seed) : Math.floor(seed || 0)) >>> 0;
-  if (a === 0) a = 0x9e3779b9;
-  return function random() {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-let grainCache = null;
-
-export function grainTile() {
-  if (grainCache) return grainCache;
-  const canvas = makeCanvas(GRAIN_SIZE, GRAIN_SIZE);
-  const g = canvas.getContext('2d');
-  const image = g.createImageData(GRAIN_SIZE, GRAIN_SIZE);
-  const rand = seeded(0x51a7c0de);
-  for (let i = 0; i < image.data.length; i += 4) {
-    const v = 128 + (rand() * 2 - 1) * 46;
-    const n = v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
-    image.data[i] = n;
-    image.data[i + 1] = n;
-    image.data[i + 2] = n;
-    image.data[i + 3] = 255;
-  }
-  g.putImageData(image, 0, 0);
-  grainCache = canvas;
-  return canvas;
-}
-
-const bloomSmall = makeCanvas(2, 2);
-const bloomBlurred = makeCanvas(2, 2);
-
-function sizeBloom(canvas, width, height) {
-  if (canvas.width !== width || canvas.height !== height) {
-    canvas.width = width;
-    canvas.height = height;
+function gradeScratch(sctx, w, h, image, panel, index) {
+  const hue = rngFor(1986 + index * 131).range(-3, 3).toFixed(2);
+  sctx.save();
+  if (image) {
+    const fit = coverFit({ x: 0, y: 0, w, h }, image, panel.zoom, {
+      x: panel.focusX,
+      y: panel.focusY
+    });
+    sctx.filter = 'brightness(1.10) contrast(1.10) saturate(1.22) hue-rotate(' + hue + 'deg)';
+    sctx.drawImage(image, fit.sx, fit.sy, fit.sw, fit.sh, 0, 0, w, h);
+    sctx.filter = 'none';
   } else {
-    const g = canvas.getContext('2d');
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.globalAlpha = 1;
-    g.globalCompositeOperation = 'source-over';
-    g.filter = 'none';
-    g.clearRect(0, 0, width, height);
+    paintPlaceholder(sctx, w, h);
   }
-  return canvas;
+
+  sctx.globalCompositeOperation = 'soft-light';
+  sctx.fillStyle = 'rgba(255,168,96,0.14)';
+  sctx.fillRect(0, 0, w, h);
+  sctx.globalCompositeOperation = 'screen';
+  sctx.fillStyle = 'rgba(60,20,90,0.10)';
+  sctx.fillRect(0, 0, w, h);
+  sctx.globalCompositeOperation = 'source-over';
+
+  const cx = w / 2;
+  const cy = h / 2;
+  const inner = Math.min(w, h) * 0.46;
+  const outer = Math.hypot(w, h) / 2;
+  const vig = sctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+  vig.addColorStop(0, 'rgba(20,4,30,0)');
+  vig.addColorStop(1, 'rgba(20,4,30,0.28)');
+  sctx.fillStyle = vig;
+  sctx.fillRect(0, 0, w, h);
+  sctx.restore();
 }
 
-export function bloomPass(ctx, rect, amount = 0.16) {
-  if (!ctx || !rect || rect.w < 4 || rect.h < 4 || amount <= 0) return;
-  const src = ctx.canvas;
-  if (!src) return;
-  const scale = 0.2;
-  const w = Math.max(2, Math.round(rect.w * scale));
-  const h = Math.max(2, Math.round(rect.h * scale));
-  const small = sizeBloom(bloomSmall, w, h);
-  const sctx = small.getContext('2d');
-  sctx.imageSmoothingEnabled = true;
-  sctx.imageSmoothingQuality = 'high';
-  sctx.drawImage(src, rect.x, rect.y, rect.w, rect.h, 0, 0, w, h);
+export function treatPanel(ctx, panel, image, palette, index = 0) {
+  if (!ctx || !panel) return;
+  const w = Math.max(1, Math.ceil(panel.w));
+  const h = Math.max(1, Math.ceil(panel.h));
+  const { canvas: scratch, ctx: sctx } = canvas2d(w, h);
+  gradeScratch(sctx, w, h, image, panel, index | 0);
 
-  const blurred = sizeBloom(bloomBlurred, w, h);
-  const bctx = blurred.getContext('2d');
-  bctx.imageSmoothingEnabled = true;
-  bctx.imageSmoothingQuality = 'high';
-  bctx.filter = `blur(${Math.max(1, Math.round(w * 0.05))}px)`;
-  bctx.drawImage(small, 0, 0);
-  bctx.filter = 'none';
-
+  const points = cutRectPoints(panel.x, panel.y, panel.w, panel.h, panel.cut);
   ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-  ctx.globalAlpha = Math.min(1, amount);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(blurred, 0, 0, w, h, rect.x, rect.y, rect.w, rect.h);
+  polyPath(ctx, points);
+  ctx.clip();
+  ctx.drawImage(scratch, panel.x, panel.y, panel.w, panel.h);
+  ctx.globalCompositeOperation = 'soft-light';
+  ctx.fillStyle = 'rgba(255,170,90,0.07)';
+  ctx.fillRect(panel.x, panel.y, panel.w, panel.h);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.restore();
+
+  const k = keylineWidth(ctx);
+  ctx.save();
+  polyPath(ctx, points);
+  ctx.strokeStyle = CREAM;
+  ctx.lineWidth = k;
+  ctx.lineJoin = 'miter';
+  ctx.stroke();
+
+  const inset = 1.5;
+  polyPath(ctx, cutRectPoints(panel.x + inset, panel.y + inset, panel.w - inset * 2, panel.h - inset * 2, Math.max(0, panel.cut - inset)));
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
   ctx.restore();
 }
 
-export function vignette(ctx, rect, palette, strength = 1) {
-  const a = Math.max(0, Math.min(1, strength));
-  if (!ctx || !rect || rect.w < 2 || rect.h < 2 || a <= 0) return;
-  const cx = rect.x + rect.w / 2;
-  const cy = rect.y + rect.h / 2;
-  const outer = 0.74 * Math.hypot(rect.w / 2, rect.h / 2);
-  const g = ctx.createRadialGradient(cx, cy, outer * 0.36, cx, cy, outer);
-  g.addColorStop(0, rgba(palette.ink, 0));
-  g.addColorStop(0.58, rgba(palette.ink, a * 0.22));
-  g.addColorStop(0.86, rgba(palette.ink, a * 0.62));
-  g.addColorStop(1, rgba(palette.ink, a));
-  ctx.save();
-  ctx.fillStyle = g;
-  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-  ctx.restore();
-}
-
-export function applyGrade(ctx, rect, palette, strength = 100, grain = 55, bloom = 60) {
-  if (!ctx || !rect || rect.w <= 0 || rect.h <= 0) return;
-  const k = Math.max(0, Math.min(1.5, strength / 100));
-  if (k <= 0) return;
+export function overlayFilm(ctx, w, h, grain = 55, bloom = 60, palette) {
+  if (!ctx || !(w > 0) || !(h > 0)) return;
+  const tile = grainTile(1986);
+  const pattern = ctx.createPattern(tile, 'repeat');
+  const g = clamp(grain, 0, 100);
+  const b = clamp(bloom, 0, 100);
 
   ctx.save();
-  const lowTop = rect.y + rect.h * 0.55;
-  const low = ctx.createLinearGradient(0, lowTop, 0, rect.y + rect.h);
-  low.addColorStop(0, rgba(palette.shadow, 0));
-  low.addColorStop(1, rgba(palette.shadow, 0.22 * k));
-  ctx.globalCompositeOperation = 'multiply';
-  ctx.fillStyle = low;
-  ctx.fillRect(rect.x, lowTop, rect.w, rect.h * 0.45);
+  if (pattern) {
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.globalAlpha = (g / 100) * 0.07;
+    ctx.fillStyle = pattern;
+    ctx.fillRect(0, 0, w, h);
+  }
 
-  const topH = rect.h * 0.40;
-  const top = ctx.createLinearGradient(0, rect.y, 0, rect.y + topH);
-  top.addColorStop(0, rgba(palette.orange, 0.06 * k));
-  top.addColorStop(1, rgba(palette.orange, 0));
   ctx.globalCompositeOperation = 'screen';
+  ctx.globalAlpha = 1;
+  const top = ctx.createLinearGradient(0, 0, 0, h / 3);
+  top.addColorStop(0, 'rgba(255,190,130,' + ((b / 100) * 0.10).toFixed(3) + ')');
+  top.addColorStop(1, 'rgba(255,190,130,0)');
   ctx.fillStyle = top;
-  ctx.fillRect(rect.x, rect.y, rect.w, topH);
+  ctx.fillRect(0, 0, w, h / 3);
+
+  ctx.globalCompositeOperation = 'source-over';
+  const cx = w / 2;
+  const cy = h / 2;
+  const vig = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.42, cx, cy, Math.hypot(w, h) / 2);
+  vig.addColorStop(0, 'rgba(30,6,44,0)');
+  vig.addColorStop(1, 'rgba(30,6,44,0.16)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, w, h);
   ctx.restore();
-
-  bloomPass(ctx, rect, 0.16 * (bloom / 60) * k);
-
-  const grainAlpha = Math.max(0, Math.min(0.12, 0.045 * (grain / 55) * k));
-  if (grainAlpha > 0.0005) {
-    const pattern = ctx.createPattern(grainTile(), 'repeat');
-    if (pattern) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'overlay';
-      ctx.globalAlpha = grainAlpha;
-      ctx.fillStyle = pattern;
-      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-      ctx.restore();
-    }
-  }
-
-  vignette(ctx, rect, palette, 0.42 * k);
 }

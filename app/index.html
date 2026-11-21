@@ -1,136 +1,206 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark">
-<title>SOLARIS VICE — cover art studio</title>
-<link rel="stylesheet" href="./style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0611">
+  <meta name="description" content="SOLARIS VICE — turn your photos into a 1986 Florida crime-poster cover, offline in your browser.">
+  <title>SOLARIS VICE — 1986 cover studio</title>
+  <link rel="stylesheet" href="style.css">
 </head>
-<body>
-<header class="topbar">
-  <div class="brand">
-    <span class="brand-sun" aria-hidden="true"></span>
-    <div class="brand-text">
-      <span class="brand-name">SOLARIS VICE</span>
-      <span class="brand-tag">cover art studio · 1986</span>
+<body data-shot="">
+  <header class="topbar">
+    <div class="brand"><span class="dot" aria-hidden="true"></span>SOLARIS VICE</div>
+    <span class="tagline">1986 cover studio · offline</span>
+    <div class="sizes" id="sizeChips" role="group" aria-label="Canvas size">
+      <button type="button" data-size="1080x1080" aria-pressed="false">1080 × 1080</button>
+      <button type="button" data-size="1080x1350" class="on" aria-pressed="true">1080 × 1350</button>
+      <button type="button" data-size="1920x1080" aria-pressed="false">1920 × 1080</button>
+    </div>
+    <button type="button" id="exportTop" class="primary">Export PNG</button>
+  </header>
+
+  <div class="stepper" id="stepper" aria-label="Workflow">
+    <span data-step="1" class="on">1 Photo</span>
+    <span data-step="2">2 Caption</span>
+    <span data-step="3">3 Export</span>
+  </div>
+
+  <main class="workspace">
+    <section class="stage" id="stage" aria-label="Cover preview">
+      <div class="stageInner" id="stageInner">
+        <canvas id="cover" width="1080" height="1350" aria-label="Cover preview"></canvas>
+        <div class="panelTag" id="panelTag">Panel 1 / 7</div>
+      </div>
+      <p class="hint">Drag to pan · scroll to zoom · 1–6 layouts · E export</p>
+      <div class="dropOverlay" id="dropOverlay">Drop photos to add them</div>
+    </section>
+
+    <aside class="inspector" id="inspector" aria-label="Cover settings">
+      <section class="card" data-card="photos">
+        <header class="cardHead">
+          <h2>Photos</h2>
+          <span class="count" id="photoCount">0</span>
+        </header>
+        <div class="thumbs" id="thumbs" aria-label="Photo list"></div>
+        <div class="row">
+          <button type="button" id="addPhotos">Add photos</button>
+          <button type="button" id="clearPhotos" class="ghost">Clear</button>
+        </div>
+        <input type="file" id="fileInput" accept="image/*" multiple hidden>
+      </section>
+
+      <section class="card" data-card="layout">
+        <header class="cardHead">
+          <h2>Layout</h2>
+        </header>
+        <div class="layouts" id="layoutGrid" role="group" aria-label="Layout">
+          <button type="button" class="on" data-layout="poster" title="Poster" aria-label="Poster layout" aria-pressed="true">
+            <svg viewBox="0 0 64 48" width="64" height="48" aria-hidden="true" focusable="false">
+              <rect x="2.5" y="3.5" width="12" height="19.5"></rect>
+              <rect x="2.5" y="25" width="12" height="19.5"></rect>
+              <rect x="16.5" y="3.5" width="30" height="41"></rect>
+              <rect x="48.5" y="3.5" width="13" height="19.5"></rect>
+              <rect x="48.5" y="25" width="13" height="19.5"></rect>
+            </svg>
+          </button>
+          <button type="button" data-layout="collage" title="Collage" aria-label="Collage layout" aria-pressed="false">
+            <svg viewBox="0 0 64 48" width="64" height="48" aria-hidden="true" focusable="false">
+              <rect x="2.5" y="3.5" width="28" height="19.5"></rect>
+              <rect x="33.5" y="3.5" width="28" height="19.5"></rect>
+              <rect x="2.5" y="25" width="13.5" height="19.5"></rect>
+              <rect x="18.5" y="25" width="13.5" height="19.5"></rect>
+              <rect x="34.5" y="25" width="13.5" height="19.5"></rect>
+              <rect x="50.5" y="25" width="11" height="19.5"></rect>
+            </svg>
+          </button>
+          <button type="button" data-layout="triptych" title="Triptych" aria-label="Triptych layout" aria-pressed="false">
+            <svg viewBox="0 0 64 48" width="64" height="48" aria-hidden="true" focusable="false">
+              <rect x="2.5" y="3.5" width="18.5" height="41"></rect>
+              <rect x="22.75" y="3.5" width="18.5" height="41"></rect>
+              <rect x="43" y="3.5" width="18.5" height="41"></rect>
+            </svg>
+          </button>
+          <button type="button" data-layout="hero" title="Hero" aria-label="Hero layout" aria-pressed="false">
+            <svg viewBox="0 0 64 48" width="64" height="48" aria-hidden="true" focusable="false">
+              <rect x="2.5" y="3.5" width="38" height="41"></rect>
+              <rect x="42.5" y="3.5" width="19" height="12.5"></rect>
+              <rect x="42.5" y="17.5" width="19" height="12.5"></rect>
+              <rect x="42.5" y="31.5" width="19" height="13"></rect>
+            </svg>
+          </button>
+          <button type="button" data-layout="solo" title="Solo" aria-label="Solo layout" aria-pressed="false">
+            <svg viewBox="0 0 64 48" width="64" height="48" aria-hidden="true" focusable="false">
+              <rect x="2.5" y="3.5" width="59" height="41"></rect>
+            </svg>
+          </button>
+          <button type="button" data-layout="nine" title="Nine" aria-label="Nine layout" aria-pressed="false">
+            <svg viewBox="0 0 64 48" width="64" height="48" aria-hidden="true" focusable="false">
+              <rect x="2.5" y="3.5" width="18.5" height="12.5"></rect>
+              <rect x="22.75" y="3.5" width="18.5" height="12.5"></rect>
+              <rect x="43" y="3.5" width="18.5" height="12.5"></rect>
+              <rect x="2.5" y="17.75" width="18.5" height="12.5"></rect>
+              <rect x="22.75" y="17.75" width="18.5" height="12.5"></rect>
+              <rect x="43" y="17.75" width="18.5" height="12.5"></rect>
+              <rect x="2.5" y="32" width="18.5" height="12.5"></rect>
+              <rect x="22.75" y="32" width="18.5" height="12.5"></rect>
+              <rect x="43" y="32" width="18.5" height="12.5"></rect>
+            </svg>
+          </button>
+        </div>
+      </section>
+
+      <section class="card" data-card="panel">
+        <header class="cardHead">
+          <h2>Selected panel</h2>
+        </header>
+        <p class="muted" id="panelInfo">Panel 1 of 7</p>
+        <label class="field">Photo
+          <select id="panelPhoto">
+            <option value="">Photos load on start</option>
+          </select>
+        </label>
+        <label class="field">Zoom
+          <input type="range" id="panelZoom" min="1" max="2.5" step="0.01" value="1">
+        </label>
+        <button type="button" id="resetFocus" class="ghost">Reset focus</button>
+      </section>
+
+      <section class="card" data-card="caption">
+        <header class="cardHead">
+          <h2>Caption</h2>
+        </header>
+        <label class="field">Title
+          <input type="text" id="capTitle" data-bind="title" value="SOLARIS VICE" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="field">Subtitle
+          <input type="text" id="capSubtitle" data-bind="subtitle" value="summer of '86" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="field">Quote
+          <input type="text" id="capQuote" data-bind="quote" value="THE HOTTEST SUMMER IN AMERICA" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="field">Tagline
+          <input type="text" id="capTagline" data-bind="tagline" value="SIX STRANGERS · ONE COAST · NO WAY BACK" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="field">Volume
+          <input type="text" id="capVolume" data-bind="volume" value="VOL. 02" autocomplete="off" spellcheck="false">
+        </label>
+      </section>
+
+      <section class="card" data-card="look">
+        <header class="cardHead">
+          <h2>Look</h2>
+        </header>
+        <div class="palettes" id="paletteRow" role="group" aria-label="Palette">
+          <button type="button" class="on" data-palette="sunset" style="--warm:#ff7a3c;--cool:#00c8b4" title="Sunset" aria-label="Sunset palette" aria-pressed="true"></button>
+          <button type="button" data-palette="neon" style="--warm:#ff2d95;--cool:#22e0ff" title="Neon" aria-label="Neon palette" aria-pressed="false"></button>
+          <button type="button" data-palette="midnight" style="--warm:#ff8a3d;--cool:#2a2a8f" title="Midnight" aria-label="Midnight palette" aria-pressed="false"></button>
+          <button type="button" data-palette="gold" style="--warm:#ffc24a;--cool:#7a4a12" title="Gold" aria-label="Gold palette" aria-pressed="false"></button>
+          <button type="button" data-palette="chrome" style="--warm:#e8e8ff;--cool:#3b5bff" title="Chrome" aria-label="Chrome palette" aria-pressed="false"></button>
+        </div>
+        <label class="range">
+          <span>Grade</span>
+          <span class="val" id="gradeVal">100</span>
+          <input type="range" id="gradeRange" min="0" max="100" step="1" value="100">
+        </label>
+        <label class="range">
+          <span>Grain</span>
+          <span class="val" id="grainVal">55</span>
+          <input type="range" id="grainRange" min="0" max="100" step="1" value="55">
+        </label>
+        <label class="range">
+          <span>Bloom</span>
+          <span class="val" id="bloomVal">60</span>
+          <input type="range" id="bloomRange" min="0" max="100" step="1" value="60">
+        </label>
+      </section>
+
+      <section class="card" data-card="export">
+        <header class="cardHead">
+          <h2>Export</h2>
+        </header>
+        <div class="sizes small" id="sizeChips2" role="group" aria-label="Export size">
+          <button type="button" data-size="1080x1080" aria-pressed="false">1080 × 1080</button>
+          <button type="button" data-size="1080x1350" class="on" aria-pressed="true">1080 × 1350</button>
+          <button type="button" data-size="1920x1080" aria-pressed="false">1920 × 1080</button>
+        </div>
+        <button type="button" id="exportSide" class="primary wide">Export PNG</button>
+        <p class="note">Saves solaris-vice-&lt;w&gt;x&lt;h&gt;.png · nothing leaves this machine</p>
+      </section>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="exportSheet" id="exportSheet" role="dialog" aria-modal="true" aria-label="Exported cover" hidden>
+    <div class="exportCard">
+      <img id="exportImg" alt="Exported cover preview">
+      <p id="exportMeta">Nothing exported yet</p>
+      <button type="button" id="closeSheet">Close</button>
     </div>
   </div>
-  <div class="topbar-actions">
-    <div class="segmented" id="size-chips" role="group" aria-label="Cover size"></div>
-    <button class="btn btn-primary" id="download" type="button">EXPORT PNG</button>
-  </div>
-</header>
 
-<main class="workspace">
-  <aside class="sidebar" aria-label="Controls">
-    <section class="panel-card">
-      <header class="card-head"><h2>Layout</h2><span class="pill" id="panel-count">6 panels</span></header>
-      <div class="layout-grid" id="layout-grid"></div>
-    </section>
-
-    <section class="panel-card">
-      <header class="card-head"><h2>Palette</h2></header>
-      <div class="palette-row" id="palette-row"></div>
-    </section>
-
-    <section class="panel-card">
-      <header class="card-head"><h2>Grade</h2></header>
-      <div class="field">
-        <label for="grade">Strength <span class="value" id="grade-value">100</span></label>
-        <input id="grade" type="range" min="0" max="100" step="1" value="100">
-      </div>
-      <div class="field">
-        <label for="grain">Grain <span class="value" id="grain-value">55</span></label>
-        <input id="grain" type="range" min="0" max="100" step="1" value="55">
-      </div>
-      <div class="field">
-        <label for="bloom">Bloom <span class="value" id="bloom-value">60</span></label>
-        <input id="bloom" type="range" min="0" max="100" step="1" value="60">
-      </div>
-    </section>
-
-    <section class="panel-card">
-      <header class="card-head"><h2>Caption</h2></header>
-      <div class="field">
-        <label for="caption-title">Title</label>
-        <input id="caption-title" type="text" maxlength="44" value="SOLARIS VICE" autocomplete="off">
-      </div>
-      <div class="field">
-        <label for="caption-subtitle">Subtitle</label>
-        <input id="caption-subtitle" type="text" maxlength="40" value="summer of '86" autocomplete="off" data-script>
-      </div>
-      <div class="field">
-        <label for="caption-quote">Pull quote</label>
-        <input id="caption-quote" type="text" maxlength="52" value="THE HOTTEST SUMMER IN AMERICA" autocomplete="off">
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label for="caption-volume">Volume</label>
-          <input id="caption-volume" type="text" maxlength="12" value="VOL. 02" autocomplete="off">
-        </div>
-        <div class="field grow">
-          <label for="caption-tagline">Tagline</label>
-          <input id="caption-tagline" type="text" maxlength="60" value="SIX STRANGERS · ONE COAST · NO WAY BACK" autocomplete="off">
-        </div>
-      </div>
-    </section>
-
-    <section class="panel-card">
-      <header class="card-head"><h2>Cast</h2><span class="pill">role chips</span></header>
-      <div class="roles" id="role-inputs"></div>
-    </section>
-
-    <section class="panel-card">
-      <header class="card-head"><h2>Photos</h2><span class="pill" id="photo-count">0 of 0</span></header>
-      <div class="photo-strip" id="photo-strip"></div>
-      <div class="row">
-        <label class="btn btn-ghost" for="add-photos">ADD PHOTOS</label>
-        <input id="add-photos" type="file" accept="image/*" multiple hidden>
-        <button class="btn btn-quiet" id="clear-photos" type="button">CLEAR</button>
-      </div>
-      <p class="note" id="panel-note">Click a panel to select it. Drag to pan, scroll to zoom.</p>
-    </section>
-  </aside>
-
-  <section class="stage-column" aria-label="Cover preview">
-    <div class="stage" id="stage">
-      <canvas id="preview" width="1080" height="1080" aria-label="Live cover preview"></canvas>
-    </div>
-    <p class="hint" id="hint">DRAG A PANEL TO PAN · SCROLL TO ZOOM · 1-6 LAYOUTS · E EXPORT</p>
-  </section>
-
-  <aside class="rail" aria-label="Export and panel">
-    <section class="panel-card">
-      <header class="card-head"><h2>Export</h2></header>
-      <div class="size-stack" id="export-sizes"></div>
-      <button class="btn btn-primary btn-wide" id="download-2" type="button">DOWNLOAD PNG</button>
-      <p class="note" id="export-note">saves solaris-vice-1080x1080.png · nothing leaves this machine</p>
-    </section>
-
-    <section class="panel-card">
-      <header class="card-head"><h2>Selected panel</h2><span class="pill" id="selected-panel">Panel 1</span></header>
-      <div class="field">
-        <label for="zoom">Zoom <span class="value" id="zoom-value">1.00×</span></label>
-        <input id="zoom" type="range" min="1" max="3" step="0.02" value="1">
-      </div>
-      <div class="row">
-        <button class="btn btn-quiet" id="reset-crop" type="button">RESET CROP</button>
-        <button class="btn btn-quiet" id="cycle-photo" type="button">CYCLE PHOTO</button>
-      </div>
-    </section>
-
-    <section class="panel-card about">
-      <header class="card-head"><h2>How it prints</h2></header>
-      <p>Every panel is a separate shot pushed through one duotone gradient map, halftoned, framed and sunk under a hand-set title. Strips, barcode and seal print last.</p>
-      <p class="fine">Anton · Archivo Black · Barlow Condensed · Pacifico</p>
-    </section>
-  </aside>
-</main>
-
-<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-<div id="shot-layer" hidden></div>
-
-<script type="module" src="./src/main.js"></script>
+  <script type="module" src="src/main.js"></script>
 </body>
 </html>

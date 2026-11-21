@@ -1,46 +1,35 @@
-export function exportCover(canvas, state) {
-  return new Promise((resolve, reject) => {
-    if (!canvas || typeof canvas.toBlob !== 'function') {
-      reject(new Error('No canvas to export'));
-      return;
+function revokePrevious(state) {
+  const prior = state && state.lastExport;
+  if (prior && typeof prior.url === 'string' && prior.url.startsWith('blob:')) {
+    try {
+      URL.revokeObjectURL(prior.url);
+    } catch (err) {
+      void err;
     }
+  }
+}
+
+export function exportCover(canvas, state) {
+  if (!canvas) return Promise.reject(new Error('exportCover needs a canvas'));
+  revokePrevious(state);
+  const width = canvas.width;
+  const height = canvas.height;
+
+  return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (!blob) {
-        reject(new Error('The canvas could not be encoded as PNG'));
+        reject(new Error('Canvas export produced no blob'));
         return;
       }
-      const width = canvas.width;
-      const height = canvas.height;
-      const previous = state && state.lastExport;
-      if (previous && previous.url) URL.revokeObjectURL(previous.url);
+      const url = URL.createObjectURL(blob);
       resolve({
         blob,
-        url: URL.createObjectURL(blob),
-        filename: `solaris-vice-${width}x${height}.png`,
+        url,
+        name: 'solaris-vice-' + width + 'x' + height + '.png',
         width,
         height,
         bytes: blob.size
       });
     }, 'image/png');
   });
-}
-
-export function downloadExport(result) {
-  if (!result) return;
-  const href = result.url || (result.blob ? URL.createObjectURL(result.blob) : '');
-  if (!href) return;
-  const link = document.createElement('a');
-  link.href = href;
-  link.download = result.filename || `solaris-vice-${result.width || 0}x${result.height || 0}.png`;
-  link.rel = 'noopener';
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-}
-
-export function formatBytes(bytes) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB';
-  if (bytes < 1024) return `${Math.round(bytes)} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
